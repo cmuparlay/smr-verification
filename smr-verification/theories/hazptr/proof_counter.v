@@ -32,14 +32,14 @@ Definition node (p : loc) lv γ_p : iProp :=
   ∃ x : Z, ⌜lv = [ #x ]⌝ ∗ own γ_p (to_agree x).
 
 Definition Counter (γ : gname) (x : Z) : iProp :=
-    ∃ (γz γc : gname), ⌜γ = encode(γz, γc)⌝ ∗ ghost_var γc (1/2)%Qp x.
+    ∃ (γz γc : gname), ⌜γ = encode(γz, γc)⌝ ∗ ghost_var_frac γc (1/2)%Qp x.
 
 Global Instance Counter_Timeless γ xs: Timeless (Counter γ xs).
   Proof. apply _. Qed.
 
 Definition CounterInternalInv (c : loc) (γz γc : gname) : iProp :=
   ∃ (p : blk) (x : Z) (γ_p : gname), hazptr.(Managed) γz p γ_p 1%nat node ∗
-    ghost_var γc (1/2)%Qp x ∗ c ↦ #p ∗ own γ_p (to_agree x).
+    ghost_var_frac γc (1/2)%Qp x ∗ c ↦ #p ∗ own γ_p (to_agree x).
 
 (* NOTE: ignoring reclamation of the hazard domain for convenience *)
 Definition IsCounter (γ : gname) (c : loc) : iProp :=

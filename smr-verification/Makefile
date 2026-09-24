@@ -24,7 +24,7 @@ clean: Makefile.coq
 
 # Create Coq Makefile.
 Makefile.coq: _CoqProject Makefile
-	"$(COQBIN)coq_makefile" -f _CoqProject -o Makefile.coq $(EXTRA_COQFILES)
+	"$(COQBIN)rocq" makefile -f _CoqProject -o Makefile.coq $(EXTRA_COQFILES)
 
 # Install build-dependencies
 OPAMFILES=$(wildcard *.opam)

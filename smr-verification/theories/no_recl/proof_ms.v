@@ -36,7 +36,7 @@ Definition Queue (γq : gname) (xs : list val) : iProp :=
   ∃ γcl γh CL ih,
     ⌜γq = encode (γcl, γh)⌝ ∗
     mono_list_auth_own γcl (1/2/2) CL ∗
-    mono_nat_auth_own γh (1/2) ih ∗
+    mono_nat_auth_own_frac γh (1/2) ih ∗
     ⌜xs = (drop (ih + 1) CL).*2⌝
     .
 
@@ -72,7 +72,7 @@ Definition QueueInternalInv qu γcl γh : iProp :=
     mono_list_auth_own γcl (1/2/2) CL ∗
     (* head pointer *)
     (qu +ₗ head) ↦ #h ∗
-    mono_nat_auth_own γh (1/2) ih ∗
+    mono_nat_auth_own_frac γh (1/2) ih ∗
     (* tail pointer *)
     (qu +ₗ tail) ↦ #t ∗
     ⌜ fst <$> CL !! ih = Some h ∧
@@ -220,7 +220,7 @@ Proof using All.
               ">(Nodes & ●CL_I & qu.h↦ & ●ih_I & qu.t↦ & %F1)".
   (* Access the node pointed by the tail pointer *)
   specialize F1 as F.
-  destruct F as [_ F]. rewrite -list_lookup_fmap in F. apply list_lookup_fmap_inv in F as [[??][[= <-] ?]].
+  destruct F as [_ F]. rewrite -list_lookup_fmap in F. apply list_lookup_fmap_Some_1 in F as [[??][[= <-] ?]].
 
   iDestruct (get_node_info it1 with "Nodes") as "[#t1.d↦ #Info_t1]"; [done|].
   wp_load.
@@ -362,7 +362,7 @@ Proof using All.
   iInv "Inv" as (CL1 h1 ih1 t1 it1)
                 ">(Nodes & ●CL_I & qu.h↦ & ●ih_I & qu.t↦ & %F1)".
   specialize F1 as F.
-  destruct F as [F _]. rewrite -list_lookup_fmap in F. apply list_lookup_fmap_inv in F as [[??][[= <-] ?]].
+  destruct F as [F _]. rewrite -list_lookup_fmap in F. apply list_lookup_fmap_Some_1 in F as [[??][[= <-] ?]].
   iDestruct (get_node_info ih1 with "Nodes") as "#(_ & Idx_h1)"; [done|].
   iDestruct (mono_nat_lb_own_get with "●ih_I") as "#◯ih1".
 
@@ -379,7 +379,7 @@ Proof using All.
               ">(Nodes & ●CL_I & qu.h↦ & ●ih_I & qu.t↦ & %F2)".
 
   (* agree *)
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih12].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih12].
 
   iDestruct (mono_list_auth_idx_lookup with "●CL_I Idx_h1") as %CL2_ih1.
   iDestruct (Nodes_access ih1 with "Nodes") as "[N_h1 Nodes]"; [done|].
@@ -472,7 +472,7 @@ Proof using All.
 
   (* agree *)
   specialize F4 as F.
-  destruct F as [F _]. rewrite -list_lookup_fmap in F. apply list_lookup_fmap_inv in F as [[??][[= <-] ?]].
+  destruct F as [F _]. rewrite -list_lookup_fmap in F. apply list_lookup_fmap_Some_1 in F as [[??][[= <-] ?]].
   iDestruct (Nodes_access ih4 with "Nodes") as "[N_h4 Nodes]"; [done|].
   iDestruct (node_case with "N_h4") as "[CASE|CASE]".
   { iDestruct "CASE" as (? Hi_t) "[t.n↦ [●CL_T N_t]]". simpl.

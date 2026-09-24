@@ -43,7 +43,7 @@ Definition Queue (γq : gname) (xs : list val) : iProp :=
   ∃ γcl γh γt CL ih,
     ⌜γq = encode (γcl, γh, γt)⌝ ∗
     mono_list_auth_own γcl (1/2/2) CL ∗
-    mono_nat_auth_own γh (1/2) ih ∗
+    mono_nat_auth_own_frac γh (1/2) ih ∗
     ⌜xs = (drop (ih + 1) CL).*2⌝
     .
 
@@ -83,10 +83,10 @@ Definition QueueInternalInv qu γe γcl γh γt : iProp :=
     mono_list_auth_own γcl (1/2/2) CL ∗
     (* head pointer *)
     (qu +ₗ head) ↦ #h ∗
-    mono_nat_auth_own γh (1/2) ih ∗
+    mono_nat_auth_own_frac γh (1/2) ih ∗
     (* tail pointer *)
     (qu +ₗ tail) ↦ #t ∗
-    mono_nat_auth_own γt 1 it ∗
+    mono_nat_auth_own_frac γt 1 it ∗
     ⌜ fst <$> CL !! ih = Some (γ_h,h) ∧
       fst <$> CL !! it = Some (γ_t,t) ∧
       ih ≤ it ⌝.
@@ -262,7 +262,7 @@ Proof.
 
   case (decide (t = t1)) as [->|NE_t1]; last first.
   { (* Someone else advanced the tail already. *)
-    iDestruct (mono_nat_lb_own_valid with "●it ◯it") as %[_ LE_it1].
+    iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it") as %[_ LE_it1].
     iDestruct (mono_list_auth_idx_lookup with "●CL_I Info_t") as %Hit.
     have NE_it1 : i_t ≠ it1.
     { intros ->. destruct F1 as (_ & Hit1 & _).
@@ -381,7 +381,7 @@ Proof using All.
   iDestruct (mono_list_auth_own_agree with "●CL_I ●CL_Q") as %[_ <-].
   iDestruct (mono_list_auth_own_agree with "●CL_I ●CL_T") as %[_ <-].
   iDestruct (mono_nat_auth_own_agree with "●ih_I ●ih_Q") as %[_ <-].
-  iDestruct (mono_nat_lb_own_valid with "●it ◯it") as %[_ LE_it1].
+  iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it") as %[_ LE_it1].
   iDestruct (mono_list_auth_idx_lookup with "●CL_I Info_t") as %Hit.
   (* snapshots *)
   iDestruct (mono_list_lb_own_get with "●CL_I") as "#◯CL1".
@@ -469,7 +469,7 @@ Proof using All.
               "[Nodes >(●CL_I & qu.h↦ & ●ih_I & qu.t↦ & ●it & %F2)]".
   (* agree *)
   iDestruct (mono_list_auth_lb_valid with "●CL_I ◯CL1") as %[_ PF_CL12].
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih12].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih12].
 
   (* snapshots *)
   iDestruct (mono_nat_lb_own_get with "●ih_I") as "#◯ih2".
@@ -523,11 +523,11 @@ Proof using All.
   iInv "Inv" as (CL3 h3 γ_h3 ih3 t3 γ_t3 it3)
               "[Nodes >(●CL_I & qu.h↦ & ●ih_I & qu.t↦ & ●it & %F3)]".
   (* agree *)
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih13].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih13].
   (* snapshots *)
   iDestruct (mono_nat_lb_own_get with "●ih_I") as "#◯ih3".
   iDestruct (mono_nat_lb_own_get with "●it") as "#◯it3".
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih2") as %[_ LE_ih23].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih2") as %[_ LE_ih23].
   iDestruct (mono_list_auth_lb_valid with "●CL_I ◯CL2") as %[_ PF_CL23].
   (* If the head guard and the tail pointer value are the same, they point to
   the same logical node. *)
@@ -589,7 +589,7 @@ Proof using All.
   (* agree *)
   iDestruct (guard_Nodes_agree _ _ ih4 with "h1Info G Idx_h1 Nodes") as "#>[<- <-]"; [by destruct_and! F4..|].
   iClear "Idx_h1".
-  iDestruct (mono_nat_lb_own_valid with "●it ◯it_ih1'") as %[_ LE_ih5it5].
+  iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it_ih1'") as %[_ LE_ih5it5].
 
   (* lookup *)
   iDestruct (mono_list_auth_idx_lookup with "●CL_I Info_n_h1") as %Hih4'.
@@ -611,7 +611,7 @@ Proof using All.
   (* agree *)
   iDestruct (mono_list_auth_own_agree with "●CL_I ●CL_Q") as %[_ <-].
   iDestruct (mono_nat_auth_own_agree with "●ih_I ●ih_Q") as %[_ <-].
-  iDestruct (mono_nat_lb_own_valid with "●it ◯it_ih1'") as %[_ LE_ih4'it4].
+  iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it_ih1'") as %[_ LE_ih4'it4].
   iDestruct (mono_list_auth_lb_valid with "●CL_I ◯CL2") as %[_ PF_CL24].
 
   (* abstract state *)

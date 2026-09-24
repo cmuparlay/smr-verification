@@ -21,4 +21,4 @@ smr-verification/
             └── array.v
 ```
 
-This artifact can be built by following the instructions in `smr-verification/README.md`. Note that, even while compiling in parallel, this will require a large amount of time: potentially upwards of 30 minutes on commodity laptops. This is due to the automation within the the proof of `theories/hazptr/proof_cached_wf.v`. Thus, your terminal may appear to hang, but it will eventually terminate. We suggest using RocqIDE or VSRocq to step through the file, as they support asynchronous batch compilation and the file will compile much faster.
+This artifact can be built by following the instructions in `smr-verification/README.md`. The proof in `theories/hazptr/proof_cached_wf.v` contains a few large proofs that take several minutes each; the build checks them in parallel using asynchronous proof workers, so the terminal may appear to hang for a while, but it will eventually terminate. RocqIDE and VSRocq also check these proofs asynchronously when stepping through the file.

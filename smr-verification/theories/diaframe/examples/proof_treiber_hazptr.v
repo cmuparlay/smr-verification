@@ -45,14 +45,14 @@ Fixpoint phys_list γz (lopt : option blk) (xs : list val) : iProp :=
 
 (* Ownership of the stack *)
 Definition TStack (γ : gname) (xs : list val) : iProp :=
-  ∃ (γz γs : gname), ⌜γ = encode(γz, γs)⌝ ∗ ghost_var γs (1/2)%Qp xs.
+  ∃ (γz γs : gname), ⌜γ = encode(γz, γs)⌝ ∗ ghost_var_frac γs (1/2)%Qp xs.
 
 Global Instance TStack_Timeless γ xs: Timeless (TStack γ xs).
 Proof. apply _. Qed.
 
 Definition TStackInternalInv (st : loc) (γz γs : gname) : iProp :=
   ∃ (h : option blk) (xs : list val),
-  (st +ₗ head) ↦ #(oblk_to_lit h) ∗ phys_list γz h xs ∗ ghost_var γs (1/2)%Qp xs ∗ emp%I.
+  (st +ₗ head) ↦ #(oblk_to_lit h) ∗ phys_list γz h xs ∗ ghost_var_frac γs (1/2)%Qp xs ∗ emp%I.
 
 (* Persistent assertions about the stack *)
 Definition IsTStack (γ : gname) (st : loc) : iProp :=
@@ -76,7 +76,7 @@ Proof. iSteps. iExists (x0 :: x2). unseal_diaframe; simpl. iSplit; [|done]. iSte
 
 Local Instance biabd_destruct_TStack (γz γs: gname) (xs: list val) :
   HINT TStack (encode (γz, γs)) xs ✱ [-; True] ⊫
-    [id]; ghost_var γs (1/2)%Qp xs ✱ [ True ].
+    [id]; ghost_var_frac γs (1/2)%Qp xs ✱ [ True ].
 Proof. iSteps. Qed.
 
 Local Instance no_lob_on_namespace_1 : do_lob.NoLobGen treiberN := I.

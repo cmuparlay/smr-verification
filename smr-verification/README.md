@@ -12,25 +12,31 @@ This repository contains the proofs of the following papers, mechanized in Rocq 
 
 ## Build
 This version is known to compile with
-Coq 8.19.0 and
-development versions of [Iris](https://gitlab.mpi-sws.org/iris/iris).
+Rocq 9.2.0,
+[Iris](https://gitlab.mpi-sws.org/iris/iris) `dev.2026-07-19.0.5b67fadf`, and
+[Diaframe](https://gitlab.mpi-sws.org/iris/diaframe) `dev.2026-08-13.0.c7a7406d`
+(the exact versions are pinned in `smr-verification.opam`).
 
 The easiest way to correctly install the dependencies is [opam](https://opam.ocaml.org/doc/Install.html) (2.0 or newer).
-Once you have installed opam, run:
+Once you have installed opam, run (in this directory):
 
 ```sh
 opam switch create \
   --no-install \
-  --repositories=default,coq-released=https://coq.inria.fr/opam/released,iris-dev=git+https://gitlab.mpi-sws.org/iris/opam.git \
-  . ocaml-base-compiler.4.14.1
-opam pin add -n -y coq 8.19.0
+  --repositories=default,rocq-released=https://rocq-prover.org/opam/released,iris-dev=git+https://gitlab.mpi-sws.org/iris/opam.git \
+  . ocaml-base-compiler.4.14.2
+eval $(opam env --switch=. --set-switch)
 
 make builddep
 # hit "y" for all prompts, if any
 ```
 
 Finally, run `make -jN` (where `N` is the number of your CPU cores) to build the project.
-The entire process (including installing dependencies) takes about 30 minutes on usual desktop machine.
+
+The proof of CachedWaitFree (`theories/hazptr/proof_cached_wf.v`) consists of a
+few large proofs that take several minutes each. The build checks them in
+parallel using asynchronous proof workers (see `Makefile.coq.local`); the number
+of workers can be set with `make CACHED_WF_JOBS=N` (default 6).
 
 Some proofs in theories/diaframe/examples may raise warning like this:
 ```

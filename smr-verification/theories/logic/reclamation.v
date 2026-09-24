@@ -210,7 +210,7 @@ Proof. unfold sids_to. rewrite seq_S. set_solver. Qed.
 Lemma sids_to_gset n :
   gset_to_coPset (list_to_set (sid <$> seq 0 n)) = sids_to n.
 Proof.
-  unfold sids_to. induction n as [|n IH]. { set_solver. }
+  unfold sids_to. induction n as [|n IH]. { apply set_eq=> x. by rewrite elem_of_gset_to_coPset. }
   rewrite -Nat.add_1_r seq_app fmap_app !list_to_set_app_L.
   rewrite gset_to_coPset_union. rewrite IH. f_equal.
   rewrite Nat.add_0_l.
@@ -233,7 +233,7 @@ Proof.
   rewrite -Nat.add_1_r seq_app NoDup_app.
   split_and!; [done| |by apply NoDup_singleton].
   intros m ElemOf. simpl. rewrite elem_of_seq in ElemOf.
-  rewrite elem_of_list_singleton. lia.
+  rewrite list_elem_of_singleton. lia.
 Qed.
 
 Lemma sids_to_sid_disjoint m n :
@@ -259,7 +259,7 @@ Proof.
   intros. assert (sid n ∈ sids_to m); last first.
   { rewrite not_elem_of_difference. by right. }
   rewrite elem_of_list_to_set.
-  apply elem_of_list_fmap_1, elem_of_seq. lia.
+  apply list_elem_of_fmap_2, elem_of_seq. lia.
 Qed.
 
 Lemma sids_from_sid_disjoint m n :
@@ -338,7 +338,7 @@ Lemma sids_range_disjoint s1 s2 s3 s4 :
 Proof.
   intros. unfold sids_range. intro.
   do 2 rewrite elem_of_list_to_set.
-  do 2 rewrite elem_of_list_fmap.
+  do 2 rewrite list_elem_of_fmap.
   intros [y0 [H0x H0in]] [y1 [H1x H1in]]; subst.
   apply sid_injective in H1x; subst.
   rewrite elem_of_seq in H0in.
@@ -370,7 +370,7 @@ Proof.
   intros. unfold sids_range, sids_from, sids_to. intro.
   rewrite elem_of_list_to_set elem_of_difference.
   rewrite not_elem_of_list_to_set.
-  do 2 rewrite elem_of_list_fmap.
+  do 2 rewrite list_elem_of_fmap.
   intros [y [-> Hy1]] [_ Hy2]. apply Hy2.
   exists y. split; auto.
   rewrite elem_of_seq. rewrite elem_of_seq in Hy1. lia.

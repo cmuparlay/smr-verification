@@ -25,14 +25,14 @@ Notation iProp := (iProp Σ).
 Context (counterN : namespace).
 
 Definition Counter (γ : gname) (x : Z) : iProp :=
-  ghost_var γ (1/2)%Qp x.
+  ghost_var_frac γ (1/2)%Qp x.
 
 Global Instance Counter_Timeless γ xs: Timeless (Counter γ xs).
   Proof. apply _. Qed.
 
 Definition CounterInternalInv (c : loc) (γc : gname) : iProp :=
   ∃ (p  : loc) (x : Z), p ↦□ #x ∗
-    ghost_var γc (1/2)%Qp x ∗ c ↦ #p.
+    ghost_var_frac γc (1/2)%Qp x ∗ c ↦ #p.
 
 (* NOTE: ignoring reclamation of the hazard domain for convenience *)
 Definition IsCounter (γ : gname) (c : loc) : iProp :=

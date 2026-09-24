@@ -81,12 +81,12 @@ Proof using DISJN.
     iDestruct "p.n" as (γ_p_n p_n p_n_k) "[p.n↪□ p_n↪□]".
     iDestruct (ghost_map_elem_agree with "p.n↪□ p.n↪") as %[= ?].
   }
-  apply elem_of_list_lookup in HLp as [idx HLp].
+  apply list_elem_of_lookup in HLp as [idx HLp].
   iDestruct (Nodes_remove with "Nodes") as (?) "[(pM & _ & p.n↪' & %HLp_next) Nodes]"; [exact HLp|]; simpl.
   iDestruct (ghost_map_elem_agree with "p.n↪ p.n↪'") as %[= <-].
   iDestruct (Nodes_combine with "Nodes pM [] [p.n↪']") as "Nodes"; [done..|].
   destruct (next_not_tail_is_Some idx L p_k false (prev,γ_prev) p_on) as [[curr' γ_curr] [= ->]]; simpl in *; [naive_solver..|].
-  apply list_lookup_fmap_Some in HLp_next as [[[c_k b] ?] [HLc [= <-]]].
+  apply list_lookup_fmap_Some in HLp_next as [[[c_k b] ?] [[= <-] HLc]].
   destruct (decide (curr' = curr)) as [->|NE]; last first.
   { (* validation failed, loop. *)
     iModIntro. iSplitL "Linv ●p_all ●p_tag PTRS Nodes".
@@ -116,7 +116,7 @@ Proof using DISJN.
     iDestruct (ghost_map_lookup with "●p_all c↪□") as %Hptrs_c.
     iDestruct (get_persistent_AllPtrs with "PTRS") as "#[c.n|%HLc]"; [exact Hptrs_c| |]; last first.
     { (* not tagged, impossible *)
-      apply elem_of_list_lookup in HLc as [idx HLc].
+      apply list_elem_of_lookup in HLc as [idx HLc].
       iDestruct (Nodes_remove with "Nodes") as (?) "[(_ & _ & c.n↪ & _) _]"; [exact HLc|]; simpl.
       iDestruct (ghost_map_elem_agree with "c.n↪ c.n↪□") as %[= ?].
     }
@@ -168,12 +168,12 @@ Proof using DISJN.
       iDestruct "c.n" as (γ_p_n p_n p_n_k) "[c.n↪□ c_n↪□]".
       iDestruct (ghost_map_elem_agree with "c.n↪□ c.n↪") as %[= ?].
     }
-    apply elem_of_list_lookup in HLc as [idx HLc].
+    apply list_elem_of_lookup in HLc as [idx HLc].
     iDestruct (Nodes_remove with "Nodes") as (?) "[(cM & _ & c.n↪' & %HLc_n) Nodes]"; [exact HLc|].
     iDestruct (ghost_map_elem_agree with "c.n↪ c.n↪'") as %[= <-].
     iDestruct (Nodes_combine with "Nodes cM [] [c.n↪']") as "Nodes"; [done..|].
     destruct (next_not_tail_is_Some idx L c_k false (curr,γ_curr) c_on) as [[c_n γ_c_n] [= ->]]; [naive_solver..|]; simpl in *.
-    apply list_lookup_fmap_Some in HLc_n as [[[c_n_k ?] [??]] [HLc_n [= <- <-]]].
+    apply list_lookup_fmap_Some in HLc_n as [[[c_n_k ?] [??]] [[= <- <-] HLc_n]].
     iDestruct (get_persistent_Nodes with "Nodes") as (?) "#(c_n↪□ & _)"; [exact HLc_n|].
     iModIntro. iSplitL "Linv ●p_all ●p_tag PTRS Nodes".
     { by iFrame "∗#%". }

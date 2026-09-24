@@ -1,5 +1,6 @@
 From iris.algebra Require Export auth updates local_updates.
 From iris.algebra Require Import proofmode_classes.
+From iris.algebra Require Import stepindex_finite.
 From iris.prelude Require Import options.
 From smr.algebra Require Import coPset.
 
@@ -61,13 +62,13 @@ Section coP_auth.
 
   Lemma coP_auth_includedN n E a b : ✓{n} (●C a ⋅ ◯C{E} b) → Some b ≼{n} Some a.
   Proof. by rewrite auth_both_validN /= => -[/Some_pair_includedN [_ ?] _]. Qed.
-  Lemma coP_auth_included `{CmraDiscrete A} E a b :
+  Lemma coP_auth_included `{!CmraDiscrete A} E a b :
     ✓ (●C a ⋅ ◯C{E} b) → Some b ≼ Some a.
   Proof. by rewrite auth_both_valid_discrete /= => -[/Some_pair_included [_ ?] _]. Qed.
-  Lemma coP_auth_includedN_total `{CmraTotal A} n E a b :
+  Lemma coP_auth_includedN_total `{!CmraTotal A} n E a b :
     ✓{n} (●C a ⋅ ◯C{E} b) → b ≼{n} a.
   Proof. intros. by eapply Some_includedN_total, coP_auth_includedN. Qed.
-  Lemma coP_auth_included_total `{CmraDiscrete A, CmraTotal A} E a b :
+  Lemma coP_auth_included_total `{!CmraDiscrete A, !CmraTotal A} E a b :
     ✓ (●C a ⋅ ◯C{E} b) → b ≼ a.
   Proof. intros. by eapply Some_included_total, coP_auth_included. Qed.
 

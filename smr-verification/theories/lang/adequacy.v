@@ -39,7 +39,7 @@ Proof.
   { rewrite auth_auth_valid. exact: to_inv_heap_valid. }
   iMod (own_alloc (● (∅ : heap_freeableUR))) as (fγ) "Hfγ";
     first by apply auth_auth_valid.
-  iMod (proph_map_init κs σ.(used_proph_id)) as (?) "Hp".
+  iMod (proph_map_init κs σ.(used_proph_id)) as (?) "[Hp _]".
   iMod (mono_nat_own_alloc) as (nγ) "[Hsteps _]".
   set (Hheap := HeapGS _ _ _ vγ _ iγ _ fγ _ _ nγ _).
   iAssert (inv_heap_inv_P (gG:=Hheap)) with "[H●]" as "P".
@@ -49,9 +49,9 @@ Proof.
   iModIntro.
   iExists (λ σ ns κs nt, (heap_ctx σ.(heap) ∗
                           proph_map_interp κs σ.(used_proph_id) ∗
-                          mono_nat_auth_own nγ 1 ns))%I.
+                          mono_nat_auth_own_frac nγ 1 ns))%I.
   iExists [(λ v, ⌜φ v⌝%I)], (λ _, True)%I, _ => /=.
-  iFrame. iSplit. { by iFrame. }
+  iFrame. iSplitR; [done|].
   iIntros (es' t2' -> ? ?) " _ H _".
   iApply fupd_mask_intro_discard; [done|]. iSplit; [|done].
   iDestruct (big_sepL2_cons_inv_r with "H") as (e' ? ->) "[Hwp H]".

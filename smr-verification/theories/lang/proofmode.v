@@ -1,5 +1,5 @@
-From iris.proofmode Require Import coq_tactics reduction spec_patterns.
-From iris.proofmode Require Export tactics.
+From iris.proofmode Require Import rocq_tactics reduction spec_patterns.
+From iris.proofmode Require Export proofmode.
 From iris.program_logic Require Import atomic.
 From smr.lang Require Export tactics derived_laws.
 From smr.lang Require Import notation.
@@ -836,7 +836,7 @@ Tactic Notation "wp_load_offset" :=
     first
       [reshape_expr e ltac:(fun K e' => eapply (tac_wp_load_offset _ _ _ _ _ K))
       |fail 1 "wp_load_offset: cannot find 'Load' in" e];
-    [stdpp.list.simplify_list_eq
+    [simplify_list_eq
     |tc_solve
     |solve_pointsto ()
     |wp_finish]
@@ -844,7 +844,7 @@ Tactic Notation "wp_load_offset" :=
     first
       [reshape_expr e ltac:(fun K e' => eapply (tac_twp_load_offset _ _ _ _ K))
       |fail 1 "wp_load_offset: cannot find 'Load' in" e];
-    [stdpp.list.simplify_list_eq
+    [simplify_list_eq
     |solve_pointsto ()
     |wp_finish]
   | _ => fail "wp_load_offset: not a 'wp'"

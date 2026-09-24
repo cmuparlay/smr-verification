@@ -44,7 +44,7 @@ Definition Queue (γq : gname) (xs : list val) : iProp :=
   ∃ γz γcl γh γt CL ih,
     ⌜γq = encode (γz, γcl, γh, γt)⌝ ∗
     mono_list_auth_own γcl (1/2/2) CL ∗
-    mono_nat_auth_own γh (1/2) ih ∗
+    mono_nat_auth_own_frac γh (1/2) ih ∗
     ⌜xs = (drop (ih + 1) CL).*2⌝
     .
 
@@ -75,7 +75,7 @@ Definition node γcl p lv γ_p : iProp :=
 
 Definition node_reaped γ_p qp (b: bool): iProp :=
   ∃ γi_p γr_p, ⌜ γ_p = encode (γi_p, γr_p) ⌝ ∗
-    ghost_var γr_p qp b.
+    ghost_var_frac γr_p qp b.
 
 
 Definition Nodes γz γcl CL ih : iProp :=
@@ -99,10 +99,10 @@ Definition QueueInternalInv qu γz γcl γh γt : iProp :=
     mono_list_auth_own γcl (1/2/2) CL ∗
     (* head pointer *)
     (qu +ₗ head) ↦ #h ∗
-    mono_nat_auth_own γh (1/2) ih ∗
+    mono_nat_auth_own_frac γh (1/2) ih ∗
     (* tail pointer *)
     (qu +ₗ tail) ↦ #t ∗
-    mono_nat_auth_own γt 1 it ∗
+    mono_nat_auth_own_frac γt 1 it ∗
     ⌜ fst <$> CL !! ih = Some (γ_h,h) ∧
       fst <$> CL !! it = Some (γ_t,t) ∧
       length CL - 2 ≤ it ⌝.
@@ -172,7 +172,7 @@ Proof.
   - {
     iDestruct "AllNodes" as "[_ Zombies]".  unfold Zombies. rewrite fmap_take.
     iDestruct (big_sepL_lookup _ _ it (γ_t, t) with "Zombies") as (b) "Hb".
-    { rewrite lookup_take; [| lia]. rewrite list_lookup_fmap. done. }
+    { rewrite lookup_take_lt; [| lia]. rewrite list_lookup_fmap. done. }
     iDestruct "Hb" as "(_ & [[_ %contra] | [_ #Idx_h]])"; [exfalso; lia | ]. done.
   }
   - {
@@ -241,7 +241,7 @@ Proof.
   -
     unfold Zombies.
     rewrite fmap_take. subst.
-    have Hi_p': take (i_p + 1) CL.*1 !! i_p = Some (γ_p, p) by  rewrite lookup_take; [done | lia].
+    have Hi_p': take (i_p + 1) CL.*1 !! i_p = Some (γ_p, p) by  rewrite lookup_take_lt; [done | lia].
     iDestruct (big_sepL_lookup_acc _ _ _ _ Hi_p' with "Zombies") as "[[%b (? & [(_ & %Htaken_contra) | (? & #?)])] Zombies]".
     + exfalso. lia. (* Since ~(it > i_p), we can guarantee that the node is not yet reaped by a dequeuer. *)
     + iFrame "∗#". iIntros. rewrite -fmap_take. iApply "Zombies". iExists b. iFrame. iRight. iFrame "∗#".
@@ -388,7 +388,7 @@ Proof.
 
   case (decide (t = t1)) as [->|NE_t1]; last first.
   { (* Someone else advanced the tail already. *)
-    iDestruct (mono_nat_lb_own_valid with "●it ◯it") as %[_ LE_it1].
+    iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it") as %[_ LE_it1].
     iDestruct (mono_list_auth_idx_lookup with "●CL_I Info_t") as %Hit.
     have NE_it1 : i_t ≠ it1.
     { intros ->. destruct F1 as (_ & Hit1 & _).
@@ -522,7 +522,7 @@ Proof using All.
   iDestruct (mono_list_auth_own_agree with "●CL_I ●CL_Q") as %[_ <-].
   iDestruct (mono_list_auth_own_agree with "●CL_I ●CL_T") as %[_ <-].
   iDestruct (mono_nat_auth_own_agree with "●ih_I ●ih_Q") as %[_ <-].
-  iDestruct (mono_nat_lb_own_valid with "●it ◯it") as %[_ LE_it1].
+  iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it") as %[_ LE_it1].
   iDestruct (mono_list_auth_idx_lookup with "●CL_I Info_t") as %Hit.
   (* snapshots *)
   iDestruct (mono_list_lb_own_get with "●CL_I") as "#◯CL1".
@@ -636,7 +636,7 @@ Proof using All.
               "[Nodes >(●CL_I & qu.h↦ & ●ih_I & qu.t↦ & ●it & %F2)]".
   (* agree *)
   iDestruct (mono_list_auth_lb_valid with "●CL_I ◯CL1") as %[_ PF_CL12].
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih12].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih1") as %[_ LE_ih12].
   (* snapshots *)
   iDestruct (mono_nat_lb_own_get with "●ih_I") as "#◯ih2".
   (* Access the protected node *)
@@ -713,7 +713,7 @@ Proof using All.
   iDestruct (shield_AllNodes_agree _ _ _ ih3 with "HeadS Idx_h1 AllNodes") as %[<- <-]; [lia | by destruct_and! F3 |].
   (* clean up *)
   iAssert ⌜ih2 = ih3⌝%I as %->; last clear LE_ih12.
-  { iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih2") as %[_ ?]. iPureIntro. lia. }
+  { iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih2") as %[_ ?]. iPureIntro. lia. }
   iRename "◯ih1" into "◯ih3". iClear "◯ih2".
   (* snapshot *)
   iDestruct (mono_list_lb_own_get with "●CL_I") as "#◯CL3".
@@ -807,7 +807,7 @@ Proof using All.
   (* agree *)
   iDestruct (mono_nat_lb_own_get with "●it") as "#◯it5".
   iDestruct (mono_list_auth_lb_valid with "●CL_I ◯CL4") as %[_ PF_CL45].
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih4'") as %[_ LE_ih45].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih4'") as %[_ LE_ih45].
 
   (* If the head guard and the tail pointer value are the same, they point to
   the same logical node. *)
@@ -876,11 +876,11 @@ Proof using All.
   iInv "Inv" as (CL6 h6 γ_h6 ih6 t6 γ_t6 it6)
   "[[Nodes Zombies] >(●CL_I & qu.h↦ & ●ih_I & qu.t↦ & ●it & %F6)]".
   iDestruct (mono_list_auth_lb_valid with "●CL_I ◯CL4") as %[_ PF_CL46].
-  iDestruct (mono_nat_lb_own_valid with "●ih_I ◯ih4'") as %[_ LE_ih46].
-  iDestruct (mono_nat_lb_own_valid with "●it ◯it_ih4'") as %[_ LE_ih4it6].
+  iDestruct (mono_nat_auth_lb_own_valid with "●ih_I ◯ih4'") as %[_ LE_ih46].
+  iDestruct (mono_nat_auth_lb_own_valid with "●it ◯it_ih4'") as %[_ LE_ih4it6].
 
   iDestruct (big_sepL_lookup_acc _ _ ih4 (γ_h4, h4) with "Zombies") as "[[%b (>Rh & Hz)] Zombies]".
-  { rewrite fmap_take. rewrite lookup_take; [| lia]. rewrite list_lookup_fmap.
+  { rewrite fmap_take. rewrite lookup_take_lt; [| lia]. rewrite list_lookup_fmap.
     eapply prefix_lookup_fmap; by destruct_and! F4. }
   iDestruct (node_reaped_agree with "Reap_token Rh") as %<-.
   iDestruct "Hz" as "[[>%contra _] | (G_h6 & _)]"; [done |].

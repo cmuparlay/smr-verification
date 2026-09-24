@@ -1,6 +1,7 @@
 From iris.algebra Require Export view gmap.
 From iris.algebra Require Import local_updates proofmode_classes big_op.
 From smr.algebra Require Import coPset.
+From iris.algebra Require Import stepindex_finite.
 From iris.prelude Require Import options.
 
 (** * like gmap_view, but using coPneset_disj instead of dfrac *)
@@ -78,14 +79,14 @@ Section rel.
     { naive_solver. }
     induction f as [|k [dq ag] f Hk' IH] using map_ind.
     { exists ∅. split; [|done]. apply: map_Forall_empty. }
-    move: (Hf k). rewrite lookup_insert=> -[/= ??].
+    move: (Hf k). rewrite lookup_insert_eq=> -[/= ??].
     destruct (to_agree_uninjN n ag) as [v ?]; [done|].
     destruct IH as (m & Hm & Hdom).
     { intros k'. destruct (decide (k = k')) as [->|?]; [by rewrite Hk'|].
       move: (Hf k'). by rewrite lookup_insert_ne. }
     exists (<[k:=v]> m).
     rewrite /coP_gmap_view_rel /= /coP_gmap_view_rel_raw map_Forall_insert //=. split_and!.
-    - exists v. by rewrite lookup_insert.
+    - exists v. by rewrite lookup_insert_eq.
     - eapply map_Forall_impl; [apply Hm|]; simpl.
       intros k' [dq' ag'] (v'&?&?&?). exists v'.
       rewrite lookup_insert_ne; naive_solver.
@@ -151,12 +152,12 @@ Section lemmas.
     split.
     - intros Hrel.
       edestruct (Hrel k) as (v' & Hagree & Hval & ->).
-      { rewrite lookup_singleton. done. }
+      { rewrite lookup_singleton_eq. done. }
       simpl in *. apply (inj _) in Hagree. rewrite Hagree.
       done.
     - intros [Hval (v' & Hm & Hv')%dist_Some_inv_r'] j [df va].
       destruct (decide (k = j)) as [<-|Hne]; last by rewrite lookup_singleton_ne.
-      rewrite lookup_singleton. intros [= <- <-]. simpl.
+      rewrite lookup_singleton_eq. intros [= <- <-]. simpl.
       exists v'. split_and!; by rewrite ?Hv'.
   Qed.
 
@@ -299,9 +300,9 @@ Section lemmas.
       { destruct (bf !! k) as [[df' va']|] eqn:Hbf; last done.
         specialize (Hrel _ _ Hbf). destruct Hrel as (v' & _ & _ & Hm).
         exfalso. rewrite Hm in Hfresh. done. }
-      rewrite lookup_singleton Hbf right_id.
+      rewrite lookup_singleton_eq Hbf right_id.
       intros [= <- <-]. eexists. do 2 (split; first done).
-      rewrite lookup_insert. done.
+      rewrite lookup_insert_eq. done.
     - rewrite lookup_singleton_ne; last done.
       rewrite left_id=>Hbf.
       specialize (Hrel _ _ Hbf). destruct Hrel as (v' & ? & ? & Hm).
@@ -331,7 +332,7 @@ Section lemmas.
     apply view_update_dealloc=>n bf Hrel j [df va] Hbf /=.
     destruct (decide (j = k)) as [->|Hne].
     - edestruct (Hrel k) as (v' & _ & Hdf & _).
-      { rewrite lookup_op Hbf lookup_singleton -Some_op. done. }
+      { rewrite lookup_op Hbf lookup_singleton_eq -Some_op. done. }
       exfalso. eapply coPneset_disj_top_exclusive. apply Hdf.
     - edestruct (Hrel j) as (v' & ? & ? & Hm).
       { rewrite lookup_op lookup_singleton_ne // Hbf. done. }
@@ -355,8 +356,8 @@ Section lemmas.
       coP_gmap_view_auth (DfracOwn 1) (<[k := v']> m) ⋅ coP_gmap_view_frag k (CoPNESetDisj ⊤) v'.
   Proof.
     rewrite coP_gmap_view_delete.
-    rewrite (coP_gmap_view_alloc _ k (CoPNESetDisj ⊤) v') //; last by rewrite lookup_delete.
-    rewrite insert_delete_insert //.
+    rewrite (coP_gmap_view_alloc _ k (CoPNESetDisj ⊤) v') //; last by rewrite lookup_delete_eq.
+    rewrite insert_delete_eq //.
   Qed.
 
   Lemma coP_gmap_view_update_big m m0 m1 :
@@ -380,7 +381,7 @@ Section lemmas.
     rewrite -assoc [_ ⋅ coP_gmap_view_frag _ _ _]comm assoc.
     rewrite (coP_gmap_view_update _ _ _ v').
     rewrite (big_opM_delete _ m1 k v') // -assoc.
-    rewrite insert_union_r; last by rewrite lookup_delete.
+    rewrite insert_union_r; last by rewrite lookup_delete_eq.
     rewrite union_delete_insert //.
   Qed.
 
@@ -447,7 +448,7 @@ Qed.
 Next Obligation.
   intros K ?? F A1 ? A2 ? B1 ? B2 ? fg; simpl.
   (* [apply] does not work, probably the usual unification probem (Coq #6294) *)
-  apply: view_map_cmra_morphism; [apply _..|]=> n m f.
+  eapply @view_map_cmra_morphism; [apply _..|]=> n m f.
   intros Hrel k [df va] Hf. move: Hf.
   rewrite !lookup_fmap.
   destruct (f !! k) as [[df' va']|] eqn:Hfk; rewrite Hfk; last done.

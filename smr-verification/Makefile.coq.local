@@ -12,3 +12,9 @@ style: $(VFILES) coq-lint.sh
 	  ./coq-lint.sh "$$FILE" || exit 1; \
 	done
 .PHONY: style
+
+# The proof of CachedWaitFree consists of a few very large proofs. Check them in
+# parallel using asynchronous proof workers (the number can be overridden, e.g.
+# `make CACHED_WF_JOBS=2`). [private] keeps the flags from applying to deps.
+CACHED_WF_JOBS ?= 6
+theories/hazptr/proof_cached_wf.vo: private OTHERFLAGS += -async-proofs on -async-proofs-j $(CACHED_WF_JOBS)

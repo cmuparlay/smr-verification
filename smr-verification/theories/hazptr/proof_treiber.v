@@ -45,14 +45,14 @@ Fixpoint phys_list γz (lopt : option blk) (xs : list val) : iProp :=
 
 (* Ownership of the stack *)
 Definition TStack (γ : gname) (xs : list val) : iProp :=
-  ∃ (γz γs : gname), ⌜γ = encode(γz, γs)⌝ ∗ ghost_var γs (1/2)%Qp xs.
+  ∃ (γz γs : gname), ⌜γ = encode(γz, γs)⌝ ∗ ghost_var_frac γs (1/2)%Qp xs.
 
 Global Instance TStack_Timeless γ xs: Timeless (TStack γ xs).
 Proof. apply _. Qed.
 
 Definition TStackInternalInv (st : loc) (γz γs : gname) : iProp :=
   ∃ (h : option blk) (xs : list val),
-    phys_list γz h xs ∗ (st +ₗ head) ↦ #(oblk_to_lit h) ∗ ghost_var γs (1/2)%Qp xs.
+    phys_list γz h xs ∗ (st +ₗ head) ↦ #(oblk_to_lit h) ∗ ghost_var_frac γs (1/2)%Qp xs.
 
 (* Persistent assertions about the stack *)
 Definition IsTStack (γ : gname) (st : loc) : iProp :=

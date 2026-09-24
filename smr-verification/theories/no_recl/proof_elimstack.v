@@ -67,7 +67,7 @@ Definition offer_inv (offer_loc : loc) (γo : gname) (P Q : iProp) : iProp :=
 
 (* Ownership of the stack *)
 Definition EStack (γ : gname) (xs : list val) : iProp :=
-  ghost_var γ (1/2)%Qp xs.
+  ghost_var_frac γ (1/2)%Qp xs.
 
 Global Instance EStack_Timeless γ xs: Timeless (EStack γ xs).
 Proof. apply _. Qed.
@@ -91,7 +91,7 @@ Definition OfferInternalInv (st : loc) (γ : gname) : iProp :=
 
 Definition EStackInternalInv (st : loc) (γ : gname) : iProp :=
   ∃ (h : option loc) (xs : list val),
-    phys_list h xs ∗ (st +ₗ head) ↦ #(oloc_to_lit h) ∗ ghost_var γ (1/2)%Qp xs ∗
+    phys_list h xs ∗ (st +ₗ head) ↦ #(oloc_to_lit h) ∗ ghost_var_frac γ (1/2)%Qp xs ∗
     OfferInternalInv st γ.
 
 (* Persistent assertions about the stack *)

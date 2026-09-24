@@ -1,5 +1,5 @@
 From iris.bi Require Export bi telescopes.
-From iris.proofmode Require Import tactics notation reduction.
+From iris.proofmode Require Import proofmode notation reduction.
 From iris.program_logic Require Import weakestpre lifting.
 From diaframe Require Import util_classes tele_utils solve_defs.
 From diaframe.symb_exec Require Import defs weakestpre weakestpre_logatom.

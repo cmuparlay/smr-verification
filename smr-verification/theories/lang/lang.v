@@ -741,7 +741,7 @@ Proof.
   intros ?. destruct l' as [? l']; simplify_eq/=.
   revert l. induction n as [|n IH]=> /= l Hl; [lia|].
   assert (l' = l.2 ∨ l.2 + 1 ≤ l')%Z as [->|?] by lia.
-  { by rewrite -surjective_pairing lookup_insert. }
+  { by rewrite -surjective_pairing lookup_insert_eq. }
   rewrite lookup_insert_ne; last by destruct l; intros ?; simplify_eq/=; lia.
   rewrite -(Loc.loc_add_blk l 1) IH /=; last lia. done.
 Qed.
@@ -790,7 +790,7 @@ Qed.
 Lemma delete_free_mem σ l l' n :
   delete l (free_mem l' n σ) = free_mem l' n (delete l σ).
 Proof.
-  revert l'. induction n as [|n IH]=> l' //=. by rewrite delete_commute IH.
+  revert l'. induction n as [|n IH]=> l' //=. by rewrite delete_delete IH.
 Qed.
 
 Lemma new_proph_id_fresh σ :
