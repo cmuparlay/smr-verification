@@ -2,6 +2,7 @@
 From stdpp Require Export sets gmap mapset.
 From iris.algebra Require Export cmra gset.
 From iris.algebra Require Import updates local_updates big_op.
+From iris.algebra Require Import stepindex_finite.
 From iris.prelude Require Import options.
 
 Record gneset K `{Countable K} := GNESet {
@@ -75,8 +76,11 @@ Section gneset.
     case_decide; [|done]. f_equal. by apply gneset_eq.
   Qed.
 
-  Global Instance gneset_equiv_dec : RelDecision (≡@{gneset K}) | 1 :=
-    λ X1 X2, decide_rel (≡) (gneset_gset X1) (gneset_gset X2).
+  Global Instance gneset_equiv_dec : RelDecision (≡@{gneset K}) | 1.
+  Proof.
+    refine (λ X1 X2, cast_if (decide (gneset_gset X1 ≡ gneset_gset X2)));
+      abstract done.
+  Defined.
 
   Global Instance gneset_elem_of_dec : RelDecision (∈@{gneset K}) | 1 :=
     λ x X, decide_rel (∈) x (gneset_gset X).

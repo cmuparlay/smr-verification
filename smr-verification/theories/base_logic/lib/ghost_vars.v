@@ -595,8 +595,8 @@ Section ghost2_lemmas.
 
     induction m using map_ind; iIntros "H". { by iLeft. }
     iDestruct (big_sepM_delete with "H") as "[● H]";
-      first apply lookup_insert.
-    rewrite delete_insert_delete delete_notin; auto.
+      first apply lookup_insert_eq.
+    rewrite delete_insert_eq delete_id; auto.
     iDestruct (IHm with "H") as "[%|H]"; iRight.
     - subst. by rewrite insert_empty dom_singleton_L gset_to_coPset_singleton.
     - rewrite dom_insert_L gset_to_coPset_union gset_to_coPset_singleton

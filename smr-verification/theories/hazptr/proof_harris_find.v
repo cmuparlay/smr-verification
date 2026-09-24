@@ -45,7 +45,7 @@ Proof.
   iInduction rL as [|[rn' i_rn'] rL IH] forall (anchor i_a rn i_rn idx_r Hr idx_a LT HLa).
   - iDestruct "RChain" as ([[= ->] [= ->]]) "#an.n↪□".
     specialize HLa as HLa'.
-    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [HLa [= <-]]]; last first.
+    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [[= <-] HLa]]; last first.
     { iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(_&_&an.n↪&_) _]"; [exact HLa|lia|]; simpl.
       by iDestruct (ghost_map_elem_agree with "an.n↪□ an.n↪") as %[= ? ?].
     }
@@ -56,7 +56,7 @@ Proof.
     injection Hr as [= <- <-]. iPureIntro. rewrite Nat.add_0_r. eauto.
   - iDestruct "RChain" as (an' i_an') "(%EQ & #an.n↪□ & RChain)". destruct EQ as [-> ->].
     fold (RetireChain γp_t an' i_an' curr i_c ((rn',i_rn') :: rL)).
-    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [HLa [= <-]]]; last first.
+    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [[= <-] HLa]]; last first.
     { iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(_&_&an.n↪&_) _]"; [exact HLa|lia|]; simpl.
       by iDestruct (ghost_map_elem_agree with "an.n↪□ an.n↪") as %[= ? ?].
     }
@@ -73,7 +73,7 @@ Proof.
         - iDestruct "RChain" as ([-> ->]) "an'.n↦". iExists curr,i_c. by iFrame.
         - iDestruct "RChain" as (an'_n i_an'_n [-> ->]) "(an'.n↦ & RChain)". iExists an'_n,i_an'_n. by iFrame.
       }
-      apply list_lookup_fmap_Some in Han' as [[[an'_k []] ?] [Han' [= <-]]]; last first. {
+      apply list_lookup_fmap_Some in Han' as [[[an'_k []] ?] [[= <-] Han']]; last first. {
         iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(_&_&an'.n↪&_) _]"; [exact Han'|lia|]; simpl.
         by iDestruct (ghost_map_elem_agree with "an'.n↪□ an'.n↪") as %[= ? ?].
       }
@@ -143,7 +143,7 @@ Proof.
   destruct b; last first. { by iDestruct (ghost_map_elem_agree with "a.n↪□ a.n↪") as %[= ?]. }
   destruct (next_not_tail_is_Some (idx_p + 1) L a_k true (anchor, i_a) o_an) as [[an' i_an'] [= ->]]; [naive_solver..|].
   iDestruct (ghost_map_elem_agree with "a.n↪□ a.n↪") as %[= <- <-].
-  apply list_lookup_fmap_Some in HLan as [[[an_k b] ?] [HLan [= <-]]].
+  apply list_lookup_fmap_Some in HLan as [[[an_k b] ?] [[= <-] HLan]].
   iEval (rewrite (drop_S _ (an_k,b, (an, i_an))); [|rewrite -Nat.add_1_r; exact HLan]) in "Ms".
   iEval (rewrite (take_cons' (an_k,b, (an, i_an))); [|simpl;lia]) in "Ms".
   iDestruct "Ms" as "[an Ms]".
@@ -322,12 +322,12 @@ Proof using DISJN.
       iDestruct "p.n" as (???) "[p.n↪□ p_n↪□]".
       iDestruct (ghost_map_elem_agree with "p.n↪□ p.n↪") as %[= ?].
     }
-    apply elem_of_list_lookup in HLp as [idx HLp].
+    apply list_elem_of_lookup in HLp as [idx HLp].
     iDestruct (Nodes_remove with "Nodes") as (?) "[(pM & _ & p.n↪' & %HLp_next) Nodes]"; [exact HLp|]; simpl.
     iDestruct (ghost_map_elem_agree with "p.n↪ p.n↪'") as %[= <-].
     iDestruct (Nodes_combine with "Nodes pM [] [p.n↪']") as "Nodes"; [done..|].
     destruct (next_not_tail_is_Some idx L p_k false (prev,γ_prev) (Some p_on)) as [[curr' γ_curr] [= ->]]; simpl in *; [naive_solver..|].
-    apply list_lookup_fmap_Some in HLp_next as [[[c_k c_b] ?] [HLc [= <-]]].
+    apply list_lookup_fmap_Some in HLp_next as [[[c_k c_b] ?] [[= <-] HLc]].
     iDestruct (Nodes_remove with "Nodes") as (cn) "[(cM & #c↪□ & c.n↪ & %HLc_next) Nodes]"; [exact HLc|]; simpl.
     destruct (decide (curr' = curr)) as [->|NE]; last first.
     { (* validation failed, loop. *)
@@ -368,7 +368,7 @@ Proof using DISJN.
       iInv "IsH" as (p_all p_tag L) "(>Linv & >●p_all & >●p_tag & >PTRS & Nodes & >(%HL & %HLh & %HLt & %Hdom))".
       iDestruct (ghost_map_lookup with "●p_all c↪□") as %Hptrs_c.
       iDestruct (get_persistent_AllPtrs with "PTRS") as "#[c.n|%HLc]"; [exact Hptrs_c| |]; last first.
-      { apply elem_of_list_lookup in HLc as [idx HLc].
+      { apply list_elem_of_lookup in HLc as [idx HLc].
         iDestruct (Nodes_remove with "Nodes") as (?) "[(_ & _ & >c.n↪ & _) _]"; [exact HLc|]; simpl.
         iDestruct (ghost_map_elem_agree with "c.n↪□ c.n↪") as %[= ? ?].
       }
@@ -433,11 +433,11 @@ Proof using DISJN.
       { iDestruct "c.n" as (???) "[c.n↪□ _]".
         iDestruct (ghost_map_elem_agree with "c.n↪ c.n↪□") as %[= ?].
       }
-      apply elem_of_list_lookup in HLc as [idx HLc].
+      apply list_elem_of_lookup in HLc as [idx HLc].
       iDestruct (Nodes_remove with "Nodes") as (?) "[(cM & _ & c.n↪' & %HLc_n) Nodes]"; [exact HLc|]; simpl.
       iDestruct (ghost_map_elem_agree with "c.n↪ c.n↪'") as %[= <-].
       iDestruct (Nodes_combine with "Nodes cM [# //] [c.n↪']") as "Nodes"; [done..|].
-      apply list_lookup_fmap_Some in HLc_n as [[[c_n_k b] ?] [HLc_n [= <-]]].
+      apply list_lookup_fmap_Some in HLc_n as [[[c_n_k b] ?] [[= <-] HLc_n]].
       iDestruct (Nodes_remove with "Nodes") as (c_n_n) "[(c_nM & #c_n↪□ & c_n.n↪ & %HLc_n_n) Nodes]"; [exact HLc_n|]; simpl.
       iDestruct (Nodes_combine with "Nodes c_nM [# //] c_n.n↪") as "Nodes"; [done..|].
       iModIntro. iSplitL "Linv ●p_all ●p_tag PTRS Nodes".
@@ -544,12 +544,12 @@ Proof using DISJN.
       iDestruct (ghost_map_elem_agree with "a_p.n↪□ a_p.n↪") as %[= ?].
     }
 
-    apply elem_of_list_lookup in HLa_p as [idx HLa_p].
+    apply list_elem_of_lookup in HLa_p as [idx HLa_p].
     iDestruct (Nodes_remove with "Nodes") as (?) "[(a_pM & _ & a_p.n↪' & %HLa) Nodes]"; [exact HLa_p|]; simpl.
     iDestruct (ghost_map_elem_agree with "a_p.n↪ a_p.n↪'") as %[= <-].
     iDestruct (Nodes_combine with "Nodes a_pM [] [a_p.n↪']") as "Nodes"; [done..|].
     destruct (next_not_tail_is_Some idx L a_p_k false (a_p,γ_a_p) o_a) as [[a' γ_a'] [= ->]]; simpl in *; [naive_solver..|].
-    apply list_lookup_fmap_Some in HLa as [[[a_k b] ?] [HLa [= <-]]].
+    apply list_lookup_fmap_Some in HLa as [[[a_k b] ?] [[= <-] HLa]].
     iDestruct (Nodes_remove with "Nodes") as (an) "[(aM & #a↪□ & a.n↪ & %HLa_next) Nodes]"; [exact HLa|]; simpl.
     destruct (decide (a' = a)) as [->|NE_a]; last first.
     { (* validation failed, loop. *)
@@ -578,7 +578,7 @@ Proof using DISJN.
     iDestruct (RetireChain_curr with "RL Nodes") as %HLc; [exact HLa'|lia|].
     rewrite Hγ_a in HLa'.
     iDestruct (Nodes_combine with "Nodes a_pM [//] [a_p.n↪']") as "Nodes"; [done..|].
-    apply list_lookup_fmap_Some in HLc as [[[c_k' c_b] ?] [HLc [= <-]]].
+    apply list_lookup_fmap_Some in HLc as [[[c_k' c_b] ?] [[= <-] HLc]].
     iDestruct (Nodes_remove with "Nodes") as (c_on) "[(cM & #c↪□' & c.n↪ & %HLc_n) Nodes]"; [exact HLc|].
     iDestruct (ghost_map_elem_agree with "c↪□ c↪□'") as %[= <-].
     iClear "c↪□'".
@@ -622,7 +622,7 @@ Proof using DISJN.
       iDestruct (ghost_map_lookup with "●p_all c↪□") as %Hptrs_c.
       iDestruct (get_persistent_AllPtrs with "PTRS") as "#[c.n|%HLc]"; [exact Hptrs_c| |]; last first.
       { clear idx.
-        apply elem_of_list_lookup in HLc as [idx HLc].
+        apply list_elem_of_lookup in HLc as [idx HLc].
         iDestruct (Nodes_remove with "Nodes") as (?) "[(_ & _ & c.n↪ & _) _]"; [exact HLc|]; simpl.
         iMod "c.n↪".
         iDestruct (ghost_map_elem_agree with "c.n↪□ c.n↪") as %[= ? ?].
@@ -683,11 +683,11 @@ Proof using DISJN.
       { iDestruct "c.n" as (???) "[c.n↪□ _]".
         iDestruct (ghost_map_elem_agree with "c.n↪ c.n↪□") as %[= ?].
       }
-      apply elem_of_list_lookup in HLc as [idx_c HLc].
+      apply list_elem_of_lookup in HLc as [idx_c HLc].
       iDestruct (Nodes_remove with "Nodes") as (?) "[(cM & _ & c.n↪' & %HLc_next) Nodes]"; [exact HLc|]; simpl.
       iDestruct (ghost_map_elem_agree with "c.n↪ c.n↪'") as %[= <-].
       destruct (next_not_tail_is_Some idx_c L c_k false (curr, γ_curr) c_on) as [[c_n γ_c_n] [= ->]]; [naive_solver..|simpl in *].
-      apply list_lookup_fmap_Some in HLc_next as [([c_n_k c_n_b]&?&?) [HLc_next [= <- <-]]].
+      apply list_lookup_fmap_Some in HLc_next as [([c_n_k c_n_b]&?&?) [[= <- <-] HLc_next]].
       iDestruct (Nodes_rm_idx_remove with "Nodes") as (c_n_n) "[(c_nM & #c_n↪□ & c_n.n↪ & %HLc_n) Nodes]"; [exact HLc_next|lia|].
       by iFrame "c_n↪□".
     }
@@ -741,14 +741,14 @@ Proof using DISJN.
     { iDestruct "a_p" as (???) "[a_p.n↪□ _]".
       iDestruct (ghost_map_elem_agree with "a_p.n↪□ a_p.n↪") as %[= ? ?].
     }
-    apply elem_of_list_lookup in HLa_p as [idx_a_p HLa_p].
+    apply list_elem_of_lookup in HLa_p as [idx_a_p HLa_p].
     iDestruct (Nodes_remove with "Nodes") as (o_a') "[(a_pM &_& a_p.n↪' & %HLa) Nodes]"; [exact HLa_p|simpl in *].
     (* TODO: fix next_not_tail_is_Some, it shouldn't need next index. Although, we may need it for unification. *)
     destruct (next_not_tail_is_Some idx_a_p L a_p_k false (a_p, γ_a_p) o_a') as [[a' γ_a'] [= ->]]; [naive_solver..|simpl in *].
     iDestruct (ghost_map_elem_agree with "a_p.n↪ a_p.n↪'") as %[= ->]; simpl in *.
 
     specialize HLa as HLa_2.
-    apply list_lookup_fmap_Some in HLa as [[[a_k' a_t] ?] [HLa [= <-]]].
+    apply list_lookup_fmap_Some in HLa as [[[a_k' a_t] ?] [[= <-] HLa]].
     iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(aM & #a↪□' & a.n↪ & %HLan) Nodes]"; [exact HLa|lia|].
 
     destruct (decide (a' = a)) as [->|NE_a]; last first.
@@ -777,7 +777,7 @@ Proof using DISJN.
     rewrite -Hγ_a in HLa_2.
     iDestruct (RetireChain_in_list with "RL Nodes") as %ElemOfL; [exact HLa_2|lia|].
     iDestruct (RetireChain_curr with "RL Nodes") as %HLc; [exact HLa_2|lia|].
-    apply list_lookup_fmap_Some in HLc as [[[? c_t] ?] [HLc [= <-]]].
+    apply list_lookup_fmap_Some in HLc as [[[? c_t] ?] [[= <-] HLc]].
     iAssert (⌜length rL ≠ 0⌝)%I as %GT.
     { iIntros (Len0). by apply length_zero_iff_nil in Len0 as ->. }
     destruct a_t; last first.
@@ -798,10 +798,10 @@ Proof using DISJN.
       rewrite -{1}(take_drop (idx_a_p + 1) L) take_app_add'; [|done].
       rewrite get_abs_state_app -{2}(app_nil_r (get_abs_state (take (idx_a_p + 1) L))). f_equal.
       apply length_zero_iff_nil, dec_stable.
-      intros [n_k ElemOf%elem_of_list_lookup_2]%Nat.neq_0_lt_0%lookup_lt_is_Some.
+      intros [n_k ElemOf%list_elem_of_lookup_2]%Nat.neq_0_lt_0%lookup_lt_is_Some.
       unfold get_abs_state in ElemOf.
-      do 2 apply elem_of_list_fmap_2 in ElemOf as [[? ?] [[= <-] ElemOf]].
-      apply elem_of_list_filter in ElemOf as [Hn [i_n_L [HL_n Hi_n_L]]%elem_of_take].
+      do 2 apply list_elem_of_fmap_1 in ElemOf as [[? ?] [[= <-] ElemOf]].
+      apply list_elem_of_filter in ElemOf as [Hn [i_n_L [HL_n Hi_n_L]]%elem_of_take].
       rewrite lookup_drop in HL_n.
       have [[n i_n] HrLn] : is_Some (rL !! i_n_L).
       { by apply lookup_lt_is_Some. }
@@ -845,7 +845,7 @@ Proof using DISJN.
     iMod (ghost_map_update (Some (curr,γ_curr), false) with "●p_tag a_p.n↪") as "[●p_tag [a_p.n↪ a_p.n↪']]".
     iAssert (if c_t then γ_curr ↪[ γp_t ]□ (c_n, true) else True)%I as "#c.n↪□". { destruct c_t; by iFrame. }
     (* Close invariant early *)
-    iAssert (ghost_var γl (1 / 2) (get_abs_state L')
+    iAssert (ghost_var_frac γl (1 / 2) (get_abs_state L')
             -∗ ▷ HListInternalInv h γp_a γp_t γl γh γz)%I with "[●p_all ●p_tag NodesTake NodesDrop PTRS a_p.n↪' a_pM c↪□ c.n↪ cM]" as "INV".
     { iIntros "Linv !>". iFrame "Linv ∗#%".
       unfold AllPtrs, Nodes. iSplitL "PTRS"; [|iSplit].
@@ -874,7 +874,7 @@ Proof using DISJN.
           iFrame. iPureIntro.
           rewrite !fmap_app lookup_app_l; last first.
           { rewrite /= length_fmap length_take_le /=; lia. }
-          rewrite fmap_take lookup_take; [done|lia].
+          rewrite fmap_take lookup_take_lt; [done|lia].
         + unfold ListNode. iExists (Some (curr,γ_curr)).
           simpl in *. iFrame "∗#". iPureIntro.
           rewrite fmap_app lookup_app_r length_fmap !length_take_le; [|lia..].
@@ -893,7 +893,7 @@ Proof using DISJN.
           rewrite lookup_cons_ne_0; [|lia]. rewrite fmap_drop lookup_drop -HLc_n. f_equal. lia.
       - iPureIntro. subst L'. split_and!.
         + rewrite !fmap_app !fmap_take !fmap_drop. apply take_drop_inf_Z_sorted; [lia|done].
-        + rewrite lookup_app_l; [|lia]. rewrite lookup_take; [done|lia].
+        + rewrite lookup_app_l; [|lia]. rewrite lookup_take_lt; [done|lia].
         + destruct HLt as [t HLt]. exists t.
           rewrite lookup_app_r /= !length_app /= !length_take_le /=; try lia.
           all: rewrite length_drop; apply lookup_lt_Some in HLc; try lia.

@@ -39,15 +39,15 @@ Proof. revert l. induction xs as [| x xs]; tc_solve. Qed.
 
 (* Ownership of the stack *)
 Definition TStack (γ : gname) (xs : list val) : iProp :=
-  ghost_var γ (1/2)%Qp xs.
+  ghost_var_frac γ (1/2)%Qp xs.
 
 Global Instance TStack_Timeless γ xs: Timeless (TStack γ xs).
 Proof. apply _. Qed.
 
 Definition TStackInternalInv (st : loc) (γs : gname) : iProp :=
   ∃ (h : option loc) (xs : list val),
-  (st +ₗ head) ↦ #(oloc_to_lit h) ∗ phys_list h xs ∗ ghost_var γs (1/2)%Qp xs ∗ emp%I.
-(* (∗ emp) is essential for Diframe to open additional invariants/atomic updates for getting the ghost_var *)
+  (st +ₗ head) ↦ #(oloc_to_lit h) ∗ phys_list h xs ∗ ghost_var_frac γs (1/2)%Qp xs ∗ emp%I.
+(* (∗ emp) is essential for Diframe to open additional invariants/atomic updates for getting the ghost_var_frac *)
 
 (* Persistent assertions about the stack *)
 Definition IsTStack (γ : gname) (st : loc) : iProp :=

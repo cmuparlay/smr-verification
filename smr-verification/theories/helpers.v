@@ -203,7 +203,7 @@ Proof.
     destruct NODUP as [NODUP NotIn]. apply NoDup_reverse in NODUP. constructor; auto.
     by apply notin_reverse.
   - apply NoDup_app in NODUP as [NODUP [HElemOf_l _]]. split; auto.
-    intro ElemOf. apply HElemOf_l in ElemOf. by apply ElemOf, elem_of_list_singleton.
+    intro ElemOf. apply HElemOf_l in ElemOf. by apply ElemOf, list_elem_of_singleton.
 Qed.
 
 Lemma elem_of_snoc l x y : x ∈ l ++ [y] ↔ x = y ∨ x ∈ l.
@@ -260,15 +260,15 @@ Proof.
   intro LE. apply lookup_lt_is_Some_2 in LE as Some. destruct Some as [x Hi].
   exists x. apply list_eq.
   intro i'. destruct (decide (i' = i)) as [->|NE].
-  - rewrite lookup_take; [|lia]. rewrite Hi.
+  - rewrite lookup_take_lt; [|lia]. rewrite Hi.
     assert (i = length (take i l)) as Len.
     { rewrite length_take_le; lia. }
     rewrite {1}Len snoc_lookup. done.
   - destruct (decide (i' < i)) as [Lt|].
-    + rewrite lookup_take; last lia.
+    + rewrite lookup_take_lt; last lia.
       rewrite lookup_app_l; last first.
       { rewrite length_take_le; lia. }
-      by rewrite lookup_take; last lia.
+      by rewrite lookup_take_lt; last lia.
     + assert (i' > i) by lia.
       rewrite lookup_take_ge; last lia.
       rewrite lookup_ge_None_2; first done.
@@ -307,7 +307,7 @@ End list.
 
 (* TODO: upstream *)
 Section top_lemmas.
-  Context `{TopSet A C}.
+  Context `{Set_ A C, Top C, !TopSet A C}.
   Implicit Types X : C.
 
   Global Instance intersection_top_l : LeftId (≡@{C}) ⊤ (∩).
@@ -426,11 +426,11 @@ Proof. set_solver. Qed.
 
 Lemma gset_to_coPset_empty :
   gset_to_coPset ∅ = ∅.
-Proof. unfold_leibniz. intros ?. setoid_rewrite elem_of_gset_to_coPset. done. Qed.
+Proof. apply set_eq=> x. by rewrite elem_of_gset_to_coPset !elem_of_empty. Qed.
 
 Global Instance injective_gset_to_coPset :
   Inj (=) (=) gset_to_coPset.
-Proof. intros ??. set_unfold. setoid_rewrite elem_of_gset_to_coPset. done. Qed.
+Proof. intros X Y HXY. apply set_eq=> x. by rewrite -!elem_of_gset_to_coPset HXY. Qed.
 
 Section gmap.
 
@@ -452,7 +452,7 @@ Definition range_list `{Countable K} {A: Type} (m: gmap K A) : list A :=
 Lemma range_list_correct `{Countable K} {A: Type} (m: gmap K A) :
   ∀ x : A, x ∈ range_list m ↔ ∃ k, m !! k = Some x.
 Proof.
-  intros x. rewrite elem_of_list_fmap. split.
+  intros x. rewrite list_elem_of_fmap. split.
   - intros ([k a] & -> & In%elem_of_map_to_list). eauto.
   - intros [k Eqk]. exists (k,x). split; [done|].
     by rewrite elem_of_map_to_list.
@@ -464,7 +464,7 @@ Definition range_f {E : Type} `{Countable K, Countable A} (f: E → A) (m: gmap 
 Lemma range_f_correct `{Countable K, Countable A} {E: Type} (f: E → A) (m: gmap K E) :
   ∀ x : A, x ∈ range_f f m ↔ ∃ k, f <$> m !! k = Some x.
 Proof.
-  intros x. rewrite /range_f elem_of_list_to_set elem_of_list_fmap.
+  intros x. rewrite /range_f elem_of_list_to_set list_elem_of_fmap.
   setoid_rewrite range_list_correct. split.
   - intros (e & -> & k & In). exists k. by rewrite In.
   - intros [k Eqk]. destruct (m !! k) as [e|] eqn: Eqk'; [|done].
@@ -481,10 +481,10 @@ Proof.
   rewrite elem_of_union elem_of_singleton !range_f_correct.
   split.
   - intros [k' Eq']. case (decide (k' = k)) => ?.
-    + subst k'. rewrite lookup_insert /= in Eq'. simplify_eq. by left.
+    + subst k'. rewrite lookup_insert_eq /= in Eq'. simplify_eq. by left.
     + rewrite lookup_insert_ne // in Eq'. right. by eexists.
   - intros [?|[k' Eq']].
-    + subst i. exists k. by rewrite lookup_insert.
+    + subst i. exists k. by rewrite lookup_insert_eq.
     + exists k'. rewrite lookup_insert_ne //. intros ?. subst k'.
       by rewrite FRESH in Eq'.
 Qed.
@@ -597,7 +597,7 @@ Section circular_list.
     mod_get (mod_set l i v) j = Some v.
   Proof.
     intros H Hij. unfold mod_get, mod_set.
-    rewrite length_insert Hij list_lookup_insert; auto.
+    rewrite length_insert Hij list_lookup_insert_eq; auto.
     by apply Nat.mod_upper_bound.
   Qed.
 

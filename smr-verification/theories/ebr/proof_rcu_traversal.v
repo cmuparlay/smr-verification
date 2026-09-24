@@ -68,7 +68,7 @@ Definition Guard γd γg g : iProp Σ :=
     base.(BaseGuard) γb γbg g Syn G ∗
     HistSnap γh h ∗
     (* TODO: this is already in the base spec. Should be possible to just add more lemmas to the base spec without this. *)
-    ghost_map_auth γrg 1 G ∗
+    ghost_map_auth_frac γrg 1 G ∗
     ([∗ map] p ↦ i ∈ G, p ↪[γrg]□ i) ∗
     ⌜ Det ## range G ⌝ ∗
     ⌜ GuardConsistent Det Syn h ⌝
@@ -113,7 +113,7 @@ Proof.
   destruct Hty as [-> Hres].
   apply base.(BaseNodeInfo_contractive). rewrite dist_later_fin_iff.
   destruct n; [done|]. simpl in *.
-  intros ???. apply Hres. lia.
+  intros ???. apply dist_later_S, Hres.
 Qed.
 
 Global Instance RCUNodeInfo_Persistent γd γg p i ty : Persistent (RCUNodeInfo γd γg p i ty).
@@ -262,13 +262,13 @@ Proof.
   iPureIntro. repeat split.
   - done.
   - set_unfold. move => i /HSyn /RIC.(ric_live_unretired) Del.
-    rewrite elem_of_list_omap. exists (del i). split; [|done]. set_solver.
+    rewrite ?list_elem_of_omap. exists (del i). split; [|done]. set_solver.
   - move => NotIn In. apply NotIn.
-    rewrite elem_of_list_to_set elem_of_list_omap in In.
+    rewrite elem_of_list_to_set list_elem_of_omap in In.
     destruct In as [[?|?] [In [= ->]]].
     done.
   - move => NotIn In. apply NotIn.
-    rewrite elem_of_list_to_set elem_of_list_omap.
+    rewrite elem_of_list_to_set list_elem_of_omap.
     exists (del i). done.
 Qed.
 
@@ -314,7 +314,7 @@ Local Lemma guard_protect_collect_guard_and_node_info
   ([∗ map] p ↦ i ∈ G, p ↪[γrg]□ i) -∗
   base.(BaseNodeInfo) γb p i ty.(ty_sz) ty.(ty_res) -∗
   HistSnap γh hg -∗
-  ghost_map_auth γrg 1 G -∗
+  ghost_map_auth_frac γrg 1 G -∗
   base.(BaseGuard) γb γbg g Syn G -∗
   |={E}=> Guard γd γg g ∗ RCUNodeInfo γd γg p i ty.
 Proof.

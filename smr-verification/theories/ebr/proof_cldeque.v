@@ -125,8 +125,8 @@ Section dqst.
     ∃ (γtbe : gname),
     ⌜1 ≤ t ≤ b ∧ b < t + length l ∧ length l ≠ 0⌝ ∗
     (* top-bot profile *)
-    (mono_nat_auth_own γtb 1 (top_bot_state t b) ∗
-      mono_nat_auth_own γtbe 1 (top_bot_state t b)
+    (mono_nat_auth_own_frac γtb 1 (top_bot_state t b) ∗
+      mono_nat_auth_own_frac γtbe 1 (top_bot_state t b)
     ) ∗
     (* top element preservation *)
     (∃ (elts : list val),
@@ -271,7 +271,7 @@ Section dqst.
     iIntros "Auth F".
       iDestruct "Auth" as (γtbeO) "(%HltO & [tbO tbeO] & eltO & museO)".
       iDestruct "F" as (γtbe) "(%Hlt & [tb tbe] & elt & muse)".
-    iDestruct (mono_nat_lb_own_valid with "tbO tb") as "[_ %Htb]".
+    iDestruct (mono_nat_auth_lb_own_valid with "tbO tb") as "[_ %Htb]".
       apply top_bot_state_le in Htb as [Ht21 Htb21]. fr.
     iIntros ([H1 Ht1b2]). subst t2. assert (t1 < b1) as Htb1... fr.
     iDestruct "elt" as (elts') "[lb %Helts]"...
@@ -416,7 +416,7 @@ Section dqst.
   Lemma dqst_auth_archive γebr' l' γdqst era γebr l t b :
     length l ≤ length l' →
     circ_slice l t b = circ_slice l' t b →
-    ghost_var γebr (1/2) l -∗
+    ghost_var_frac γebr (1/2) l -∗
     dqst_auth γdqst era γebr l t b ==∗
     dqst_archived γdqst era γebr l t b ∗
     dqst_auth γdqst (S era) γebr' l' t b.
@@ -478,19 +478,19 @@ Section proof.
 
   Definition node (p : blk) lv γ_p : iProp :=
     ∃ (l : list val),
-      ⌜lv = #(length l) :: l⌝ ∗ ghost_var γ_p (1/2) l.
+      ⌜lv = #(length l) :: l⌝ ∗ ghost_var_frac γ_p (1/2) l.
 
   Definition deque_inv (γq γera γe : gname) (γdqst : dqst_gnames) (q : blk) : iProp :=
     ∃ (era : nat) (C : blk) (l : list val) (t b : nat) (pop : bool) (γebr : gname),
       ⌜1 ≤ t ≤ b ∧ b < t + length l ∧ length l ≠ 0⌝ ∗
       (* abstract *)
       own γq (●E (circ_slice l t b)) ∗
-      ghost_var γera (1/2) (era, C, l, b, pop, γebr) ∗
+      ghost_var_frac γera (1/2) (era, C, l, b, pop, γebr) ∗
       dqst_auth γdqst era γebr l t b ∗
       (* physical *)
       (q +ₗ circle) ↦ #C ∗
       ( rcu.(Managed) γe C (γebr) (S (length l)) node ∗
-        ghost_var γebr (1/2) l ) ∗
+        ghost_var_frac γebr (1/2) l ) ∗
       (q +ₗ qtop) ↦ #t ∗
       (q +ₗ qbot) ↦{#1/2} #(if pop then b-1 else b).
 
@@ -514,7 +514,7 @@ Section proof.
     ∃ (γq γera : gname) (γdqst : dqst_gnames) (era : nat)
     (l : list val) (C : blk) (b : nat) (γebr : gname),
       ⌜γ = encode (γq, γera, γdqst)⌝ ∗
-      ghost_var γera (1/2) (era, C, l, b, false, γebr) ∗
+      ghost_var_frac γera (1/2) (era, C, l, b, false, γebr) ∗
       (q +ₗ qbot) ↦{#1/2} #b.
 
   Lemma own_ea_agree γ a b :
@@ -568,15 +568,15 @@ Section proof.
   Lemma managed_get_circle E γe d C γebr l :
     ↑(ptrN rcuN C) ⊆ E →
     IsRCUDomain rcu γe d -∗
-    (Managed rcu γe C γebr (S (length l)) node ∗ ghost_var γebr (1 / 2) l)
+    (Managed rcu γe C γebr (S (length l)) node ∗ ghost_var_frac γebr (1 / 2) l)
     ={E,E∖↑(ptrN rcuN C)}=∗
-      (Managed rcu γe C γebr (S (length l)) node ∗ ghost_var γebr (1 / 2) l) ∗
-      ghost_var γebr (1/2) l ∗
+      (Managed rcu γe C γebr (S (length l)) node ∗ ghost_var_frac γebr (1 / 2) l) ∗
+      ghost_var_frac γebr (1/2) l ∗
       (C +ₗ csz) ↦ #(length l) ∗ (C +ₗ carr) ↦∗ l ∗
       ∀ l' : list val,
         ⌜length l = length l'⌝ ∗
         (C +ₗ csz) ↦ #(length l) ∗ (C +ₗ carr) ↦∗ l' ∗
-        ghost_var γebr (1/2) l'
+        ghost_var_frac γebr (1/2) l'
           ={E ∖ ↑ptrN rcuN C,E}=∗ True.
   Proof with extended_auto.
     iIntros (HN) "#IRD [Man man]".
@@ -599,14 +599,14 @@ Section proof.
     rcu.(IsRCUDomain) γe d -∗
     arr' ↦∗ l' -∗
     <<{ ∀∀ (_ : ()), ▷ rcu.(Managed) γe C γebr (S (length l)) node ∗
-          ghost_var γebr (1 / 2) l }>>
+          ghost_var_frac γebr (1 / 2) l }>>
       circle_grow_rec #(C +ₗ carr) #n #arr' #m #t #b @ E,∅,↑(ptrN rcuN C)
     <<{ ∃∃ (l2' : list val),
       ⌜length l2' = m⌝ ∗
       ⌜circ_slice l t b = circ_slice l2' t b⌝ ∗
       ⌜∀ i, b ≤ i < t + length l → mod_get l' i = mod_get l2' i⌝ ∗
       ▷ rcu.(Managed) γe C γebr (S (length l)) node ∗
-      ghost_var γebr (1 / 2) l |
+      ghost_var_frac γebr (1 / 2) l |
       RET #(); arr' ↦∗ l2'
     }>>.
   Proof with extended_auto.
@@ -669,7 +669,7 @@ Section proof.
         all: replace (S b - 1) with b...
         + rewrite Heqs...
         + rewrite -Hlast... unfold mod_get.
-          rewrite length_insert Hm list_lookup_insert...
+          rewrite length_insert Hm list_lookup_insert_eq...
           rewrite Hm. apply Nat.mod_upper_bound...
       - intros i Hi. rewrite -Hlast... unfold mod_get.
         rewrite length_insert Hm list_lookup_insert_ne...
@@ -686,13 +686,13 @@ Section proof.
     rcu.(IsRCUDomain) γe d -∗
     <<{ ∀∀ (_ : ()),
         ▷ rcu.(Managed) γe C γebr (S (length l)) node ∗
-          ghost_var γebr (1 / 2) l }>>
+          ghost_var_frac γebr (1 / 2) l }>>
       circle_grow #C #t #b #(length l) @ E,∅,↑(ptrN rcuN C)
     <<{ ∃∃ (C' : blk) (l' : list val),
       ⌜length l < length l'⌝ ∗
       ⌜circ_slice l t b = circ_slice l' t b⌝ ∗
       ▷ rcu.(Managed) γe C γebr (S (length l)) node ∗
-      ghost_var γebr (1 / 2) l |
+      ghost_var_frac γebr (1 / 2) l |
     RET #C';
       (C' +ₗ csz) ↦ #(length l') ∗ (C' +ₗ carr) ↦∗ l' ∗ † C' … Z.to_nat (S (length l')) }>>.
   Proof with extended_auto.

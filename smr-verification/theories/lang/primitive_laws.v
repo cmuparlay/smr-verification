@@ -42,7 +42,7 @@ Section steps.
   Context `{!heapGS_gen hlc Σ}.
 
   Local Definition steps_auth (n : nat) : iProp Σ :=
-    mono_nat_auth_own heapGS_step_name 1 n.
+    mono_nat_auth_own_frac heapGS_step_name 1 n.
 
   Definition steps_lb (n : nat) : iProp Σ :=
     mono_nat_lb_own heapGS_step_name n.
@@ -51,7 +51,7 @@ Section steps.
     steps_auth n -∗ steps_lb m -∗ ⌜m ≤ n⌝.
   Proof.
     iIntros "Hauth Hlb".
-    by iDestruct (mono_nat_lb_own_valid with "Hauth Hlb") as %[_ Hle].
+    by iDestruct (mono_nat_auth_lb_own_valid with "Hauth Hlb") as %[_ Hle].
   Qed.
 
   Local Lemma steps_lb_get n :
@@ -107,7 +107,7 @@ Section heap_definitions.
     heap_freeable_aux.(seal_eq).
 
   Definition heap_ctx (mem:memory) : iProp Σ :=
-    (∃ hF, ghost_map_auth heap_name 1 mem
+    (∃ hF, ghost_map_auth_frac heap_name 1 mem
          ∗ own heap_freeable_name (● hF)
          ∗ ⌜heap_freeable_rel mem hF⌝)%I.
 End heap_definitions.
@@ -377,8 +377,8 @@ Section heap.
   (** Weakest precondition *)
   Lemma heap_alloc_vs σ l n v :
     (∀ m : Z, σ !! (l +ₗ m) = None) →
-    ghost_map_auth heap_name 1 σ
-    ==∗ ghost_map_auth heap_name 1 (init_mem l n v σ)
+    ghost_map_auth_frac heap_name 1 σ
+    ==∗ ghost_map_auth_frac heap_name 1 (init_mem l n v σ)
           ∗ ([∗ list] i ↦ v ∈ (replicate n v), (l +ₗ i) ↦ v).
   Proof.
     revert l n.
@@ -394,7 +394,7 @@ Section heap.
         rewrite -Loc.add_assoc in FRESH. apply FRESH.
     }
     assert (∀ l n, (∀ m : Z, σ !! (l +ₗ m) = None) → init_mem l n v σ ∖ σ ##ₘ σ) as Disjσ.
-    { intros l n FREE. by apply map_disjoint_difference_l. }
+    { intros l n FREE. by apply map_disjoint_difference_l1. }
     iIntros (l n FREE) "Heap".
     iDestruct ((ghost_map_insert_big ((init_mem l n v σ) ∖ σ)) with "Heap") as "HeapCond"; [by apply Disjσ|].
     rewrite (_ :(init_mem l n v σ) ∖ σ ∪ σ = (init_mem l n v σ)); last first.
@@ -408,7 +408,7 @@ Section heap.
     rewrite Loc.add_0.
     iDestruct (big_sepM_delete (λ k v, (k ↪[heap_name] v)%I) (<[l:=v]> (init_mem (l +ₗ 1) n v σ) ∖ σ) l v) as "[Hl _]".
     { rewrite lookup_difference_Some. split; [simplify_map_eq|].
-      - rewrite lookup_insert. done.
+      - rewrite lookup_insert_eq. done.
       - specialize FRESH with 0. by rewrite Loc.add_0 in FRESH.
     }
     iSpecialize ("Hl" with "HeapCond").
@@ -458,8 +458,8 @@ Section heap.
     list_to_map heap_list.
 
   Lemma heap_free_vs σ l vl :
-    ghost_map_auth heap_name 1 σ ∗ ([∗ list] i ↦ v ∈ vl, (l +ₗ i) ↦ v)
-    ==∗ ghost_map_auth heap_name 1 (free_mem l (length vl) σ).
+    ghost_map_auth_frac heap_name 1 σ ∗ ([∗ list] i ↦ v ∈ vl, (l +ₗ i) ↦ v)
+    ==∗ ghost_map_auth_frac heap_name 1 (free_mem l (length vl) σ).
   Proof.
     iIntros "[Heap List]".
     iDestruct ((ghost_map_delete_big (heap_seq vl l)) with "Heap") as "Heap".
@@ -488,7 +488,7 @@ Section heap.
           (imap ((λ (i : nat) (v0 : val), (l +ₗ i, v0)) ∘ S) vl)) =
        list_to_map
           (imap ((λ (i : nat) (v0 : val), (l +ₗ i, v0)) ∘ S) vl)) as ->.
-    { apply delete_notin. apply not_elem_of_list_to_map_1.
+    { apply delete_id. apply not_elem_of_list_to_map_1.
       rewrite fmap_imap. intro Hl.
       apply elem_of_lookup_imap_1 in Hl.
       destruct Hl as (i & v' & Hl & _).
@@ -528,7 +528,7 @@ Section heap.
   Qed.
 
   Lemma pointsto_lookup σ l q v :
-    ghost_map_auth heap_name 1 σ -∗ l ↦{q} v -∗
+    ghost_map_auth_frac heap_name 1 σ -∗ l ↦{q} v -∗
     ⌜σ !! l = Some v⌝.
   Proof.
     iIntros "Heap l↦".
@@ -537,7 +537,7 @@ Section heap.
   Qed.
 
   Lemma pointsto_lookup_1 σ l v :
-    ghost_map_auth heap_name 1 σ -∗ l ↦ v -∗
+    ghost_map_auth_frac heap_name 1 σ -∗ l ↦ v -∗
     ⌜σ !! l = Some v⌝.
   Proof.
     apply pointsto_lookup.
@@ -559,8 +559,8 @@ Section heap.
 
   Lemma heap_write_vs σ l v v':
     σ !! l = Some v →
-    ghost_map_auth heap_name 1 σ -∗ l ↦ v
-    ==∗ ghost_map_auth heap_name 1 (<[l:= v']> σ)
+    ghost_map_auth_frac heap_name 1 σ -∗ l ↦ v
+    ==∗ ghost_map_auth_frac heap_name 1 (<[l:= v']> σ)
         ∗ l ↦ v'.
   Proof.
     iIntros (Hσv) "Heap l↦".
@@ -779,8 +779,8 @@ Section inv_heap.
       apply: prod_local_update_1. apply: option_local_update.
       apply: exclusive_local_update. done. }
     iDestruct (big_sepM_insert _ _ _ (w, I') with "[$HsepM $Hl //]") as "HsepM".
-    { apply lookup_delete. }
-    rewrite insert_delete_insert -to_inv_heap_insert. iIntros "!> {$H◯}".
+    { apply lookup_delete_eq. }
+    rewrite insert_delete_eq -to_inv_heap_insert. iIntros "!> {$H◯}".
     iApply ("Hclose" with "[H● HsepM]"). iExists _; by iFrame.
   Qed.
 

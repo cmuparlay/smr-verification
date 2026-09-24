@@ -46,7 +46,7 @@ Proof.
   iInduction rL as [|rn' rL IH] forall (anchor rn idx_r Hr idx_a LT HLa).
   - iDestruct "RChain" as (->) "#an.n↦□".
     specialize HLa as HLa'.
-    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [HLa [= <-]]]; last first.
+    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [[= <-] HLa]]; last first.
     { iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(_&_&an.n↦&_) _]"; [exact HLa|lia|].
       by iDestruct (pointsto_ne with "an.n↦ an.n↦□") as %?.
     }
@@ -56,7 +56,7 @@ Proof.
     { apply lookup_lt_Some in Hr. simpl in *. lia. }
     injection Hr as [= <-]. iPureIntro. rewrite Nat.add_0_r. eauto.
   - iDestruct "RChain" as (an') "(%EQ & #an.n↦□ & RChain)". subst rn. fold (RetireChain an' curr (rn' :: rL)).
-    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [HLa [= <-]]]; last first.
+    apply list_lookup_fmap_Some in HLa as [[[a_k []] ?] [[= <-] HLa]]; last first.
     { iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(_&_&an.n↦&_) _]"; [exact HLa|lia|].
       by iDestruct (pointsto_ne with "an.n↦ an.n↦□") as %?.
     }
@@ -73,7 +73,7 @@ Proof.
         + iDestruct "RChain" as (->) "an'.n↦". iExists curr. by iFrame.
         + iDestruct "RChain" as (an'_n ->) "(an'.n↦ & RChain)". iExists an'_n. by iFrame.
       }
-      apply list_lookup_fmap_Some in Han' as [[[an'_k []] ?] [Han' [= <-]]]; last first.
+      apply list_lookup_fmap_Some in Han' as [[[an'_k []] ?] [[= <-] Han']]; last first.
       { iDestruct (Nodes_rm_idx_remove with "Nodes") as (?) "[(_&_&an'.n↦'&_) _]"; [exact Han'|lia|].
         by iDestruct (pointsto_ne with "an'.n↦' an'.n↦") as %?.
       }
@@ -173,7 +173,7 @@ Proof.
     { iNext. repeat iExists _. by iFrame "∗#%". }
     wp_pures. iApply "HΦ'". iFrame. destruct committing; by iFrame.
   }
-  apply elem_of_list_lookup in HLp as [idx_L_p HLp].
+  apply list_elem_of_lookup in HLp as [idx_L_p HLp].
   iDestruct (Nodes_remove with "Nodes") as (p_n) "[(#p.k↦□ & _ & p.n↦ & >%HLp_next) Nodes]"; [exact HLp|].
   destruct (decide (p_n = Some anchor)) as [->|NE]; last first.
   { (* prev's next changed from anchor, cas must fail. *)
@@ -199,10 +199,10 @@ Proof.
     rewrite -{1}(take_drop (idx_L_p + 1) L) take_app_add'; [|done].
     rewrite get_abs_state_app -{2}(app_nil_r (get_abs_state (take (idx_L_p + 1) L))). f_equal.
     apply length_zero_iff_nil, dec_stable.
-    intros [n_k ElemOf%elem_of_list_lookup_2]%Nat.neq_0_lt_0%lookup_lt_is_Some.
+    intros [n_k ElemOf%list_elem_of_lookup_2]%Nat.neq_0_lt_0%lookup_lt_is_Some.
     unfold get_abs_state in ElemOf.
-    do 2 apply elem_of_list_fmap_2 in ElemOf as [[? ?] [[= <-] ElemOf]].
-    apply elem_of_list_filter in ElemOf as [Hn [i_n_L [HL_n Hi_n_L]]%elem_of_take].
+    do 2 apply list_elem_of_fmap_1 in ElemOf as [[? ?] [[= <-] ElemOf]].
+    apply list_elem_of_filter in ElemOf as [Hn [i_n_L [HL_n Hi_n_L]]%elem_of_take].
     rewrite lookup_drop in HL_n.
     have [n HrLn] : is_Some (rL !! i_n_L).
     { by apply lookup_lt_is_Some. }
@@ -210,7 +210,7 @@ Proof.
     rewrite HL_n in HL_n'. injection HL_n' as [= -> -> ->]. naive_solver.
   }
   (* Close invariant early *)
-  iAssert (ghost_var γl (1 / 2) (get_abs_state L') ∗ Nodes_rm_idx idx_L_p L γp_a
+  iAssert (ghost_var_frac γl (1 / 2) (get_abs_state L') ∗ Nodes_rm_idx idx_L_p L γp_a
            -∗ ▷ HListInternalInv h γp_a γl)%I with "[●p_all PTRS p.n↦]" as "INV".
   { iIntros "[Linv Nodes] !>". repeat iExists _. iFrame "Linv ∗#%".
     unfold AllPtrs, Nodes, Nodes_rm_idx. iSplitL "PTRS"; [|iSplit].
@@ -242,7 +242,7 @@ Proof.
         iDestruct "LN" as (on) "($ & $ & l_n.n↦ & %HLl_n)".
         iExists on. iFrame. iPureIntro. rewrite !fmap_app lookup_app_l; last first.
         { rewrite /= length_app length_fmap length_take_le /=; lia. }
-        rewrite -fmap_app -take_S_r; [|done]. rewrite fmap_take lookup_take; [done|lia].
+        rewrite -fmap_app -take_S_r; [|done]. rewrite fmap_take lookup_take_lt; [done|lia].
       + unfold ListNode. iExists (Some curr). iFrame "∗#". iPureIntro.
         rewrite fmap_app lookup_app_r fmap_app length_app /= length_fmap; [|lia].
         rewrite Nat.add_0_r Nat.sub_diag fmap_drop lookup_drop Nat.add_0_r -HL_curr.
@@ -255,7 +255,7 @@ Proof.
         rewrite fmap_drop lookup_drop -HLl_n. f_equal. lia.
     - iPureIntro. subst L'. split_and!.
       + rewrite !fmap_app !fmap_take !fmap_drop. apply take_drop_inf_Z_sorted; [lia|done].
-      + rewrite lookup_app_l; [|lia]. rewrite lookup_take; [done|lia].
+      + rewrite lookup_app_l; [|lia]. rewrite lookup_take_lt; [done|lia].
       + destruct HLt as [t HLt]. exists t.
         rewrite lookup_app_r; last first.
         all: rewrite /= !length_app /= !length_take_le /=; try lia.
@@ -284,8 +284,8 @@ Proof.
     iModIntro. iSplitL "Linv Nodes INV"; [iApply "INV"; iFrame|].
     wp_pures. iApply "HΦ'". iModIntro. iFrame. iLeft. iExists _. iFrame "#".
   }
-  apply elem_of_list_lookup in HLc as [idx_c HLc].
-  apply list_lookup_fmap_Some in HL_curr as [[[c_k' b] ?] [HL_curr [= <-]]].
+  apply list_elem_of_lookup in HLc as [idx_c HLc].
+  apply list_lookup_fmap_Some in HL_curr as [[[c_k' b] ?] [[= <-] HL_curr]].
   iDestruct (get_persistent_Nodes_rm_idx with "Nodes") as (?) "#(c.k↦□' & _ & _ & _)"; [exact HL_curr|lia|].
   iDestruct (pointsto_agree with "c.k↦□' c.k↦□") as %[= ->]; iClear "c.k↦□".
   assert (idx_c = idx_L_p + 1 + length rL) as ->.
@@ -377,7 +377,7 @@ Proof.
   { (* Tagged, so going into next iteration. *)
     (* Assert that we must be tagged. *)
     iDestruct "c_next" as "[c_next|%HLcurr]"; last first.
-    { apply elem_of_list_lookup in HLcurr as [idx HLcurr].
+    { apply list_elem_of_lookup in HLcurr as [idx HLcurr].
       iDestruct (Nodes_remove with "Nodes") as (c_next) "[(_ & _ & c.n↦ & >%HLc_next) Nodes]"; [exact HLcurr|].
       wp_apply (wp_resolve_load with "[$pr $c.n↦]") as (?) "(-> & _ & _)". inversion Hpr.
     }
@@ -401,7 +401,7 @@ Proof.
   { iDestruct "c_next" as (c_next ?) "#[c.n↦□ _]".
     wp_apply (wp_resolve_load with "[$pr $c.n↦□]") as (?) "(-> & _ & _)". inversion Hpr.
   }
-  apply elem_of_list_lookup in HLcurr as [idx HLcurr].
+  apply list_elem_of_lookup in HLcurr as [idx HLcurr].
   iDestruct (Nodes_remove with "Nodes") as (c_next) "[(_ & _ & c.n↦ & >%HLc_next) Nodes]"; [exact HLcurr|].
   wp_apply (wp_resolve_load with "[$pr $c.n↦]") as (pr_v') "(-> & pr & c.n↦)".
   iDestruct (Nodes_combine with "Nodes [] [] [c.n↦]") as "Nodes"; [done..|].
@@ -412,7 +412,7 @@ Proof.
     (* Get information about c_next *)
     destruct (next_not_tail_is_Some idx L c_k false curr c_next) as [c_next' [= ->]]; [naive_solver..|].
     rename c_next' into c_next.
-    apply list_lookup_fmap_Some in HLc_next as [[[cn_k b] ?] [HLc_next [= <-]]].
+    apply list_lookup_fmap_Some in HLc_next as [[[cn_k b] ?] [[= <-] HLc_next]].
     iDestruct (get_persistent_Nodes with "Nodes") as (on) "#(c_next.k↦□ & c_next↪□ & #c_next.n↦□ & %HLc_next_next)"; [exact HLc_next|].
     destruct (decide (prophecy_to_bool pr_v' ∨ (cn_k < k)%inf_Z)) as [NotCommit|[Hpr_v'%Is_true_false GE]%Decidable.not_or].
     { (* Tagged or key too small. Do not commit. *)
@@ -495,7 +495,7 @@ Proof.
     iDestruct (ghost_map_lookup with "●p_all c↪□") as %Hptrs_c.
     iDestruct (get_persistent_AllPtrs with "PTRS") as "#[_ [#c.n|%HLc]]"; [exact Hptrs_c| |]; last first.
     { (* Not tagged, impossible. *)
-      apply elem_of_list_lookup in HLc as [idx_c HLc].
+      apply list_elem_of_lookup in HLc as [idx_c HLc].
       iDestruct (Nodes_remove with "Nodes") as (c_n) "[(_ & _ & c.n↦ & >%HLc_n) Nodes]"; [exact HLc|].
       wp_load. iIntros "!>" (?) "->". inversion Hpr_v'.
     }
@@ -519,7 +519,7 @@ Proof.
     wp_apply (wp_resolve_load with "[$pr $c.n↦]") as (?) "(-> & _ & _)". inversion Hpr_v'.
   }
   (* Not tagged. *)
-  apply elem_of_list_lookup in HLc as [idx_c HLc].
+  apply list_elem_of_lookup in HLc as [idx_c HLc].
   iDestruct (Nodes_remove with "Nodes") as (c_n) "[(_ & _ & c.n↦ & >%HLc_n) Nodes]"; [exact HLc|].
   wp_apply (wp_resolve_load with "[$pr $c.n↦]") as (?) "(-> & _ & c.n↦)".
   iDestruct (Nodes_combine with "Nodes [] [] [c.n↦]") as "Nodes"; [done..|].

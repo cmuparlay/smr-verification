@@ -37,7 +37,7 @@ Definition Guard γd (g : loc) (st : guard_state) : iProp Σ :=
     end.
 
 Definition RCUInv γb γdata Im Dm Rs : iProp Σ :=
-  ghost_map_auth γdata 1 Dm ∗
+  ghost_map_auth_frac γdata 1 Dm ∗
   base.(RCUAuth) γb Im Rs ∗
   ⌜dom Im = dom Dm⌝.
 
@@ -87,7 +87,7 @@ Proof.
 
   iMod (spec_rcu_base.rcu_domain_register base (λ p lv i, i ↪[γdata]□ γ_p ∗ R p lv γ_p)%I
         (dom Dm)
-        (λ i, ghost_map_auth γdata 1 (<[i := γ_p]> Dm) ∗ i ↪[γdata]□ γ_p)%I
+        (λ i, ghost_map_auth_frac γdata 1 (<[i := γ_p]> Dm) ∗ i ↪[γdata]□ γ_p)%I
       with "BIRD BRA p↦ †p [data $R]") as (i Hi) "(BRA & BM & [data #i↪□])"; [solve_ndisj..| |].
   { iIntros (i Hi).
     by iMod (ghost_map_insert_persist i γ_p with "data") as "[$ #$]"; [by apply not_elem_of_dom|].

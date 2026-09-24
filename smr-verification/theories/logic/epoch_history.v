@@ -277,10 +277,10 @@ Proof.
   iMod (mono_list_own_alloc
     [(γo0, γs0, γf0); (γo1, γs1, γf1); (γo2, γs2, γf2); (γo3, γs3, γf3) ]
   ) as (γl) "[● #◯]".
-  iDestruct (mono_list_idx_own_get 0 ∅ with "◯") as "◯0"; auto.
-  iDestruct (mono_list_idx_own_get 1 ∅ with "◯") as "◯1"; auto.
-  iDestruct (mono_list_idx_own_get 2 ∅ with "◯") as "◯2"; auto.
-  iDestruct (mono_list_idx_own_get 3 ∅ with "◯") as "◯3"; auto.
+  iDestruct (mono_list_idx_own_get 0 _ with "◯") as "◯0"; auto.
+  iDestruct (mono_list_idx_own_get 1 _ with "◯") as "◯1"; auto.
+  iDestruct (mono_list_idx_own_get 2 _ with "◯") as "◯2"; auto.
+  iDestruct (mono_list_idx_own_get 3 _ with "◯") as "◯3"; auto.
 
   iModIntro. iExists γl.
   iSplitL "● ●o0 ●s0 ●f0 ●o1 ●s1 ●f1 ●o2 ●s2 ●f2 ●o3 ●s3 ●f3".
@@ -332,7 +332,7 @@ Proof.
   iExists gnames.
   rewrite length_alter. iSplit; auto. iFrame.
   iApply (big_sepL2_delete _ _ _ e); eauto; simpl.
-  { rewrite list_lookup_alter. by rewrite Hue. }
+  { rewrite list_lookup_alter_eq. by rewrite Hue. }
   rewrite (union_comm_L unlinked_e).
   rewrite bool_decide_eq_false_2; last lia. iFrame.
 
@@ -656,7 +656,7 @@ Proof.
     rewrite -Cinr_op in HV.
     apply to_agree_op_valid in HV.
     rewrite leibniz_equiv_iff in HV. subst.
-    rewrite lookup_take; last lia. by rewrite HeF lookup_app He'.
+    rewrite lookup_take_lt; last lia. by rewrite HeF lookup_app He'.
   - iCombine "HFi ●" gives %HV. destruct HV.
 Qed.
 

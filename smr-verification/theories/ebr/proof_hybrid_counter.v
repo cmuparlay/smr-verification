@@ -55,7 +55,7 @@ Proof. split; [done|]. apply _. Qed.
 Lemma token_alloc (names : list gname) :
  ⊢ |==> ∃ γ, ⌜γ ∉ names⌝ ∗ token γ 1.
 Proof.
-  iMod (own_alloc_cofinite _ (list_to_set names)) as "?"; last first.
+  iMod (own_alloc_cofinite (Cinl 1%Qp : oneshotR) (list_to_set names)) as "?"; last first.
   { setoid_rewrite not_elem_of_list_to_set. done. } done.
 Qed.
 
@@ -86,18 +86,18 @@ Definition HCounterInternalInv (γe γn γm γx : gname) (c : loc) : iProp :=
     rcu.(Managed) γe l γ_l 1%nat (node γn) ∗
     c ↦ #l ∗
     node_info γn γ_l l i_l ∗
-    ghost_var γx (1/2)%Qp x ∗
+    ghost_var_frac γx (1/2)%Qp x ∗
     node_status γ_l x i_l ∗
     ([∗ list] i_old ↦ old ∈ olds,
       node_info γn old.1 old.2 i_old ∗ shot old.1) ∗
     mono_list_auth_own γn 1 (olds ++ [(γ_l, Loc.blk_to_loc l)]) ∗
-    mono_nat_auth_own γm 1 i_l ∗
+    mono_nat_auth_own_frac γm 1 i_l ∗
     ⌜ (length olds = i_l)%nat ∧
       NoDup (olds.*1 ++ [γ_l]) ⌝
     .
 
 Definition HCounter (γc : gname) (x : nat) : iProp :=
-  ∃ (γn γm γx : gname), ⌜γc = encode (γn, γm, γx)⌝ ∗ ghost_var γx (1/2)%Qp x.
+  ∃ (γn γm γx : gname), ⌜γc = encode (γn, γm, γx)⌝ ∗ ghost_var_frac γx (1/2)%Qp x.
 
 Global Instance HCounter_Timeless γc xs: Timeless (HCounter γc xs).
 Proof. apply _. Qed.
@@ -369,7 +369,7 @@ Proof using All.
       { unfold not. intros H. by inversion H. }
       iDestruct (mono_list_auth_lb_valid with "●n ◯n") as %[_ PF_olds].
       apply prefix_app_same_length in PF_olds; auto.
-      iDestruct (mono_nat_lb_own_valid with "●m ◯m") as %[_ LE_i_l]. iClear "◯m".
+      iDestruct (mono_nat_auth_lb_own_valid with "●m ◯m") as %[_ LE_i_l]. iClear "◯m".
       have {LE_i_l}LT_i_l : (i_l < i_l')%nat by lia.
 
       (* There should be a [shot] of the old node. *)

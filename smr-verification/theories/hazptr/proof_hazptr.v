@@ -109,8 +109,8 @@ Definition InactiveShield γV sbvmap slist : iProp :=
 Definition HazardDomain γsb γtok γinfo γdata γptrs γU γR γV (d hBag rSet : loc) : iProp :=
   ∃ info data ptrs sbvmap slist rs,
 
-    ghost_map_auth γinfo 1 info ∗
-    ghost_map_auth γdata 1 data ∗
+    ghost_map_auth_frac γinfo 1 info ∗
+    ghost_map_auth_frac γdata 1 data ∗
     coP_ghost_map_auth γptrs 1 ptrs ∗
 
     sbs.(SlotBag) γsb hBag sbvmap slist ∗
@@ -348,9 +348,9 @@ Proof.
   iInduction info as [|loc v info Hinfo IH] using map_ind.
   { unfold CC, CU. rewrite dom_empty_L gset_to_coPset_empty difference_empty_L !big_sepM_empty. iFrame. }
   iDestruct (big_sepM_delete with "●CC") as "[●CCloc ●CC]"; [by simplify_map_eq|].
-  rewrite delete_insert; [|done].
+  rewrite delete_insert_id; [|done].
   iDestruct (big_sepM_delete with "●CU") as "[●CUloc ●CU]"; [by simplify_map_eq|].
-  rewrite delete_insert; [|done].
+  rewrite delete_insert_id; [|done].
   iSpecialize ("IH" with "●CC ●CU").
   iDestruct "●CCloc" as (U) "[●loc↦pC ●CCloc]".
   iDestruct "●CUloc" as (? R) "(●loc↦pU & ●CUr & ●CUv & ●CUt & %CUru)".
@@ -510,7 +510,7 @@ Proof.
     { iApply (big_sepL_mono with "●CCloc"). iIntros (idx' slot' Hslot') "●CCloc".
       iDestruct "●CCloc" as (b'' oloc V R) "(%&?&?&%&%&?)".
       exfr. iPureIntro. rewrite lookup_insert_ne; last first.
-      { intros <-. apply NotIn. rewrite elem_of_list_lookup. eauto. }
+      { intros <-. apply NotIn. rewrite list_elem_of_lookup. eauto. }
       by simplify_map_eq.
     }
     iDestruct "●loc_slot" as (b'' oloc V R) "(%&●iv&●ir&%&%&IF)".
@@ -518,7 +518,7 @@ Proof.
     { apply lookup_lt_Some in Hidx as LE. rewrite length_app /= in LE.
       assert (¬ (idx < (length slist))).
       { intro LT. rewrite lookup_app_l in Hidx; last done.
-        apply NotIn. rewrite elem_of_list_lookup. eauto. }
+        apply NotIn. rewrite list_elem_of_lookup. eauto. }
       lia.
     }
     iDestruct (ghost_vars2_agree with "●iv ●v") as %->; [set_solver..|].
@@ -649,9 +649,9 @@ Proof.
   - iApply big_sepL_mono; last auto.
     iIntros (i p Hp) "SS".
     destruct (decide (p = slot)) as [->|NE].
-    + by rewrite lookup_insert.
+    + by rewrite lookup_insert_eq.
     + by rewrite lookup_insert_ne.
-  - by rewrite lookup_insert.
+  - by rewrite lookup_insert_eq.
 Qed.
 
 Lemma inactive_shield_unset γV sbvmap slist si slot v :
@@ -674,7 +674,7 @@ Proof.
     apply (nth_lookup_Some _ _ slot _) in Hsi.
     rewrite -{2}HL in Hsi. done.
   }
-  by rewrite lookup_insert.
+  by rewrite lookup_insert_eq.
 Qed.
 
 Lemma inactive_shield_drop γV sbvmap slist si slot v :
@@ -698,7 +698,7 @@ Proof.
     apply (nth_lookup_Some _ _ slot _) in Hsi.
     rewrite -{2}HL in Hsi. done.
   }
-  by rewrite lookup_insert.
+  by rewrite lookup_insert_eq.
 Qed.
 
 
@@ -714,7 +714,7 @@ Proof.
   rewrite HM. iFrame. iApply big_sepL_mono; last auto.
   iIntros (k y Hky) "SS".
   destruct (decide (y = slot)).
-  - subst. by rewrite lookup_insert.
+  - subst. by rewrite lookup_insert_eq.
   - rewrite lookup_insert_ne; auto.
     destruct (decide (k = si)); auto.
     subst. rewrite HL in Hky. naive_solver.
@@ -730,7 +730,7 @@ Proof.
   iApply big_sepL_mono; last auto.
   iIntros (k y Hky) "SS".
   destruct (decide (y = slot)).
-  - subst. by rewrite lookup_insert.
+  - subst. by rewrite lookup_insert_eq.
   - rewrite lookup_insert_ne; auto.
 Qed.
 
@@ -759,7 +759,7 @@ Proof.
   iDestruct (inactive_shield_alloc γV) as "InactSh".
   remember (encode (γsb, γtok, γinfo, γdata, γptrs, γU, γR, γV)) as γz eqn:Hγz.
   iAssert (HazardDomain _ _ _ _ _ _ _ _ _ _ _)%I with "[SlotBag RList ●γinfo ●γdata ●γptrs GQ]" as "HD".
-  { repeat iExists _. iFrame "∗#". rewrite big_sepM_empty big_sepL_nil.
+  { repeat iExists _. iFrame "∗#". rewrite ?big_sepM_empty ?big_sepL_nil.
     iPureIntro. split_and!; [done..|by rewrite !dom_empty_L|]. intros l i Hli.
     rewrite lookup_empty in Hli. congruence.  }
   iMod (inv_alloc hazptrInvN _ (HazardDomain _ _ _ _ _ _ _ _ _ _ _) with "HD") as "#HDInv".
@@ -890,7 +890,7 @@ Proof.
     iModIntro.
     iDestruct (SlotBag_NoDup with "B") as "%ND".
     iDestruct (ghost_quadrants_activate with "●Q") as "●Q"; eauto.
-    { rewrite elem_of_list_lookup. eauto. }
+    { rewrite list_elem_of_lookup. eauto. }
     iDestruct (inactive_shield_activate with "●X") as "[●X ●TI]"; eauto.
 
     iSplitR "S ●TI"; [exfr|].
@@ -1424,11 +1424,11 @@ Lemma add_if_active_new_protection_r γtok γinfo γdata γptrs γU γR γV
     (Hsnap_r : Some r ∉ snap)
     (Hact : act = true)
     (Hhz : hz = Some r) :
-  ghost_map_auth γinfo 1 info -∗
+  ghost_map_auth_frac γinfo 1 info -∗
   CC γtok γinfo γptrs γU γR γV info sbvmap slist2 -∗
   SnapshotLoopInv_r γtok γinfo γdata γptrs γU γR slist1 (S rem') snap r len
   ==∗
-  ghost_map_auth γinfo 1 info ∗
+  ghost_map_auth_frac γinfo 1 info ∗
   CC γtok γinfo γptrs γU γR γV info sbvmap slist2 ∗
   AddIfActivePost_r γtok γinfo γdata γptrs γU γR slist1 rem' snap act hz r len.
 Proof.
@@ -1528,11 +1528,11 @@ Lemma add_if_active_still_not_protected γtok γinfo γdata γptrs γU γR γV
     (Hachz : (act = false ∧ act' = act) ∨ hz ≠ Some r)
     (Hrem' : slist1 !! rem' = Some slot)
     (Hslot : sbvmap !! slot = Some (act', hz)) :
-  ghost_map_auth γinfo 1 info -∗
+  ghost_map_auth_frac γinfo 1 info -∗
   CC γtok γinfo γptrs γU γR γV info sbvmap slist2 -∗
   SnapshotLoopInv_r γtok γinfo γdata γptrs γU γR slist1 (S rem') snap r len
   ==∗
-  ghost_map_auth γinfo 1 info ∗
+  ghost_map_auth_frac γinfo 1 info ∗
   CC γtok γinfo γptrs γU γR γV info sbvmap slist2 ∗
   AddIfActivePost_r γtok γinfo γdata γptrs γU γR slist1 rem' snap act hz r len.
 Proof.
@@ -1640,7 +1640,7 @@ Proof.
   set slen1 := length slist1.
   (* Take tokens (rs, ⊤∖slist) from CU. *)
   iAssert (|==>
-    ghost_map_auth γinfo 1 info1 ∗ (* for lookup *)
+    ghost_map_auth_frac γinfo 1 info1 ∗ (* for lookup *)
     CU γtok γinfo γptrs γU γR γV info1 sbvmap1 slist1 ∗
     ([∗ list] rle ∈ rs, let '(r,len,_) := rle in ∃ i R,
       Reclaiming (mgmtN N) (ptrsN N) γtok γinfo γdata γptrs γU r i len R ∗
@@ -1854,7 +1854,7 @@ Proof.
   destruct act; last first.
   { (* Slot is not active. If I have some tokens, then revoke them. *)
     iAssert ( |={E ∖ ↑hazptrInvN}=>
-      ghost_map_auth γinfo 1 info2 ∗ (* for lookup *)
+      ghost_map_auth_frac γinfo 1 info2 ∗ (* for lookup *)
       CC γtok γinfo γptrs γU γR γV info2 sbvmap2 slist2 ∗
       SnapshotLoopInv γtok γinfo γdata γptrs γU γR slist1 rem' snap rs
     )%I with "[●info CC Reclaiming]" as ">(●info & CC & Reclaiming)".
@@ -1865,7 +1865,7 @@ Proof.
       rewrite !big_sepL_cons /=.
       iDestruct "Reclaiming" as "[R Reclaiming']".
       iAssert ( |==>
-        ghost_map_auth γinfo 1 info2 ∗
+        ghost_map_auth_frac γinfo 1 info2 ∗
         CC γtok γinfo γptrs γU γR γV info2 sbvmap2 slist2 ∗
         AddIfActivePost_r γtok γinfo γdata γptrs γU γR slist1 rem' snap false hz r len
       )%I with "[●info CC R]" as ">(●info & CC & R)".
@@ -1932,7 +1932,7 @@ Proof.
   (* NOTE: we don't care about this ['act] *)
 
   iAssert ( |==>
-      ghost_map_auth γinfo 1 info3 ∗ (* for lookup *)
+      ghost_map_auth_frac γinfo 1 info3 ∗ (* for lookup *)
       CC γtok γinfo γptrs γU γR γV info3 sbvmap3 slist3 ∗
       AddIfActivePost γtok γinfo γdata γptrs γU γR slist1 rem' snap true hz rs
   )%I with "[●info CC Reclaiming]" as ">(●info & CC & Reclaiming)".
@@ -1946,7 +1946,7 @@ Proof.
     iDestruct "Reclaiming" as "[R Reclaiming']".
 
     iAssert ( |==>
-      ghost_map_auth γinfo 1 info3 ∗
+      ghost_map_auth_frac γinfo 1 info3 ∗
       CC γtok γinfo γptrs γU γR γV info3 sbvmap3 slist3 ∗
       AddIfActivePost_r γtok γinfo γdata γptrs γU γR slist1 rem' snap true hz r len
     )%I with "[●info CC R]" as ">(●info & CC & R)".

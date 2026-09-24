@@ -119,8 +119,8 @@ Section dqst.
     ∃ (γtbe : gname),
     ⌜1 ≤ t ≤ b ∧ b < t + length l ∧ length l ≠ 0⌝ ∗
     (* top-bot profile *)
-    (mono_nat_auth_own γtb 1 (top_bot_state t b) ∗
-      mono_nat_auth_own γtbe 1 (top_bot_state t b)
+    (mono_nat_auth_own_frac γtb 1 (top_bot_state t b) ∗
+      mono_nat_auth_own_frac γtbe 1 (top_bot_state t b)
     ) ∗
     (* top element preservation *)
     (∃ (elts : list val),
@@ -265,7 +265,7 @@ Section dqst.
     iIntros "Auth F".
       iDestruct "Auth" as (γtbeO) "(%HltO & [tbO tbeO] & eltO & museO)".
       iDestruct "F" as (γtbe) "(%Hlt & [tb tbe] & elt & muse)".
-    iDestruct (mono_nat_lb_own_valid with "tbO tb") as "[_ %Htb]".
+    iDestruct (mono_nat_auth_lb_own_valid with "tbO tb") as "[_ %Htb]".
       apply top_bot_state_le in Htb as [Ht21 Htb21]. fr.
     iIntros ([H1 Ht1b2]). subst t2. assert (t1 < b1) as Htb1... fr.
     iDestruct "elt" as (elts') "[lb %Helts]"...
@@ -475,7 +475,7 @@ Section proof.
       (C +ₗ csz) ↦□ #(length l) ∗
       (* abstract *)
       own γq (●E (circ_slice l t b)) ∗
-      ghost_var γera (1/2) (era, C, l, b, pop) ∗
+      ghost_var_frac γera (1/2) (era, C, l, b, pop) ∗
       dqst_auth γdqst era C l t b ∗
       (* physical *)
       (q +ₗ circle) ↦{#1/2} #C ∗
@@ -503,7 +503,7 @@ Section proof.
     (l : list val) (C : blk) (b : nat),
       ⌜γ = encode (γq, γera, γdqst)⌝ ∗
       (C +ₗ csz) ↦□ #(length l) ∗
-      ghost_var γera (1/2) (era, C, l, b, false) ∗
+      ghost_var_frac γera (1/2) (era, C, l, b, false) ∗
       (q +ₗ circle) ↦{#1/2} #C ∗
       (C +ₗ carr) ↦∗{#1/2} l ∗
       (q +ₗ qbot) ↦{#1/2} #b.
@@ -621,7 +621,7 @@ Section proof.
         all: replace (S b - 1) with b...
         + rewrite Heqs...
         + rewrite -Hlast... unfold mod_get.
-          rewrite length_insert Hm list_lookup_insert...
+          rewrite length_insert Hm list_lookup_insert_eq...
           rewrite Hm. apply Nat.mod_upper_bound...
       - intros i Hi. rewrite -Hlast... unfold mod_get.
         rewrite length_insert Hm list_lookup_insert_ne...

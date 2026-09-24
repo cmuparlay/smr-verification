@@ -114,7 +114,10 @@ Section type_dist2.
   Lemma type_dist_dist2 n ty1 ty2 : dist n ty1 ty2 → type_dist2 n ty1 ty2.
   Proof. intros EQ. split; intros; try apply dist_dist_later; apply EQ. Qed.
   Lemma type_dist2_dist_later n ty1 ty2 : type_dist2 n ty1 ty2 → dist_later n ty1 ty2.
-  Proof. intros EQ. dist_later_fin_intro. split; intros; try apply EQ; lia. Qed.
+  Proof.
+    intros EQ. apply dist_later_fin_iff. destruct n as [|n]; [done|].
+    split; [apply EQ|]. intros. apply dist_later_S, EQ.
+  Qed.
   Lemma type_later_dist2_later n ty1 ty2 : dist_later n ty1 ty2 → type_dist2_later n ty1 ty2.
   Proof. destruct n; first done. rewrite dist_later_fin_iff. exact: type_dist_dist2. Qed.
   Lemma type_dist2_dist n ty1 ty2 : type_dist2 (S n) ty1 ty2 → dist n ty1 ty2.
@@ -126,7 +129,7 @@ Section type_dist2.
   Proof. intros ?? EQ. apply EQ. Qed.
   Lemma ty_own_type_dist n:
     Proper (type_dist2 (S n) ==> eq ==> eq ==> eq ==> dist n) ty_res.
-  Proof. intros ?? EQ ??-> ??-> ??->. apply EQ. lia. Qed.
+  Proof. intros ?? EQ ??-> ??-> ??->. apply dist_later_S, EQ. Qed.
 End type_dist2.
 
 Notation TypeNonExpansive T := (∀ n, Proper (type_dist2 n ==> type_dist2 n) T).

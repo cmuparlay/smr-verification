@@ -1,5 +1,5 @@
 From stdpp Require Import countable.
-From iris.algebra Require Import ofe.
+From iris.algebra Require Import ofe stepindex_finite.
 From iris.prelude Require Import options.
 
 Inductive inf_Z : Set :=

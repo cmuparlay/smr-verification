@@ -57,7 +57,7 @@ Definition phys_map xs sbvmap : iProp :=
   ⌜domain_of xs sbvmap⌝.
 
 Definition ghost_slot_bag γm sbvmap : iProp :=
-  ghost_map_auth γm 1 sbvmap ∗
+  ghost_map_auth_frac γm 1 sbvmap ∗
   ([∗ map] slot ↦ bv ∈ sbvmap,
     if decide (sbvmap !! slot = Some (false, None))
     then slot ↪[γm] (false, None) else True).
@@ -225,7 +225,7 @@ Proof.
   { iPureIntro. by apply NoDup_snoc. }
 
   (* if a ∉ xs, derive contradiction due to cycle *)
-  apply elem_of_list_lookup in e as [i Hia].
+  apply list_elem_of_lookup in e as [i Hia].
   iDestruct (phys_list_prefix xs (take (S i) xs) with "Lphys'") as
     "#Lphysd". { apply take_prefix. }
   iDestruct (phys_list_agree (xs++[x]) (take (S i) xs) with "[] []") as "%"; auto.
@@ -280,8 +280,8 @@ Proof.
   repeat iSplit; auto.
   - iApply phys_list_snoc. iFrame.
   - iApply (big_sepM_delete _ _ slot).
-    { apply lookup_insert. }
-    rewrite delete_insert_delete delete_notin; auto. iFrame.
+    { apply lookup_insert_eq. }
+    rewrite delete_insert_eq delete_id; auto. iFrame.
   - iPureIntro. by apply domain_of_insert.
 Qed.
 
@@ -321,13 +321,13 @@ Proof.
   iModIntro. iFrame.
   destruct (decide (v = (false, None))).
   - iSplit; auto. iApply big_sepM_insert; auto.
-    rewrite lookup_insert; subst; simpl. simplify_option_eq. iFrame.
+    rewrite lookup_insert_eq; subst; simpl. simplify_option_eq. iFrame.
     iApply big_sepM_mono; last auto; simpl.
     iIntros (k x Hkx) "Dec".
     destruct (decide (k = slot)); subst. { by rewrite H in Hkx. }
     by rewrite lookup_insert_ne.
   - iFrame. iApply big_sepM_insert; auto.
-    rewrite lookup_insert decide_False; last naive_solver.
+    rewrite lookup_insert_eq decide_False; last naive_solver.
     iSplit; auto. iApply big_sepM_mono; last auto; simpl.
     iIntros (k x Hkx) "Dec".
     destruct (decide (k = slot)); subst. { by rewrite H in Hkx. }
@@ -355,48 +355,48 @@ Proof.
       subst.
       iPoseProof (big_sepM_insert _ (delete slot sbvmap) slot
         with "[●Ms ●S]") as "●S".
-      { by rewrite lookup_delete. }
+      { by rewrite lookup_delete_eq. }
       { iFrame. by rewrite decide_True. }
-      simpl. rewrite insert_delete_insert. iFrame.
+      simpl. rewrite insert_delete_eq. iFrame.
       rewrite insert_id; last apply H.
       rewrite insert_id; last apply H. auto.
     + (* leave ghost slot outside the bag *)
-      iFrame. rewrite <- insert_delete_insert.
+      iFrame. rewrite <- insert_delete_eq.
       iApply big_sepM_insert.
-      { by rewrite lookup_delete. }
-      rewrite lookup_insert.
+      { by rewrite lookup_delete_eq. }
+      rewrite lookup_insert_eq.
       rewrite decide_False; last naive_solver. iFrame.
       iApply big_sepM_mono; last auto; simpl.
       iIntros (k x Hkx) "Dec".
-      destruct (decide (k = slot)); subst. { by rewrite lookup_delete in Hkx. }
+      destruct (decide (k = slot)); subst. { by rewrite lookup_delete_eq in Hkx. }
       rewrite lookup_insert_ne; auto.
       by rewrite lookup_delete_ne.
   - (* ghost slot is outside the bag *)
     iMod (ghost_map_update with "●Mm Decv") as "[●Mm ●Ms]"; auto.
     iModIntro. iFrame.
-    rewrite <- insert_delete_insert.
+    rewrite <- insert_delete_eq.
     destruct (decide (v' = (false, None))).
     + (* put ghost slot into the bag *)
       subst. iSplit; auto.
-      iApply big_sepM_insert. { by rewrite lookup_delete. }
-      rewrite decide_True; last by rewrite lookup_insert. iFrame.
+      iApply big_sepM_insert. { by rewrite lookup_delete_eq. }
+      rewrite decide_True; last by rewrite lookup_insert_eq. iFrame.
       iPoseProof (big_sepM_delete with "●S") as "[_ ●S]";
         first apply H.
       iApply big_sepM_mono; last auto; simpl.
       iIntros (k x Hkx) "Dec".
-      destruct (decide (k = slot)); subst. { by rewrite lookup_delete in Hkx. }
+      destruct (decide (k = slot)); subst. { by rewrite lookup_delete_eq in Hkx. }
       rewrite lookup_insert_ne; auto.
       by rewrite lookup_delete_ne.
     + (* leave ghost slot outside the bag *)
-      iFrame. iApply big_sepM_insert. { by rewrite lookup_delete. }
+      iFrame. iApply big_sepM_insert. { by rewrite lookup_delete_eq. }
       rewrite decide_False; last first.
-      { rewrite lookup_insert. naive_solver. }
+      { rewrite lookup_insert_eq. naive_solver. }
       iSplit; auto.
       iPoseProof (big_sepM_delete with "●S") as "[_ ●S]";
         first apply H.
       iApply big_sepM_mono; last auto; simpl.
       iIntros (k x Hkx) "Dec".
-      destruct (decide (k = slot)); subst. { by rewrite lookup_delete in Hkx. }
+      destruct (decide (k = slot)); subst. { by rewrite lookup_delete_eq in Hkx. }
       rewrite lookup_insert_ne; auto.
       by rewrite lookup_delete_ne.
 Qed.
@@ -638,10 +638,10 @@ Proof.
     iSplitL "Sact1 Sv1 Ms'".
     + iApply (phys_map_undelete x xs' true None _
         with "[] [Sact1 Sv1]"); auto.
-      * apply lookup_insert.
+      * apply lookup_insert_eq.
       * by apply domain_of_update.
       * iFrame.
-      * by rewrite delete_insert_delete.
+      * by rewrite delete_insert_eq.
     + iExists (length xs), _.
       iSplit; auto.
       iApply mono_list_idx_own_get; auto.
@@ -738,9 +738,9 @@ Proof.
   iDestruct (big_sepM_insert
     _ (delete slot sbvmap) slot (true, v) with "[Ms Sact2 Sv2]") as
     "Ms".
-  { by rewrite lookup_delete. }
+  { by rewrite lookup_delete_eq. }
   { iFrame. iFrame. }
-  rewrite insert_delete_insert.
+  rewrite insert_delete_eq.
 
   (* commit *)
   iMod ("Commit" with "[-]") as "HΦ"; last (iModIntro; auto; by iApply "HΦ").
@@ -770,9 +770,9 @@ Proof.
   iDestruct (big_sepM_insert
     _ (delete slot sbvmap) slot (true, None) with "[Ms Sact2 Sv2]") as
     "Ms".
-  { by rewrite lookup_delete. }
+  { by rewrite lookup_delete_eq. }
   { iFrame. iFrame. }
-  rewrite insert_delete_insert.
+  rewrite insert_delete_eq.
   iApply "HΦ". iModIntro. iFrame; iSplit; [done|].
   repeat (iSplit; auto).
   iPureIntro. by apply domain_of_update.
@@ -801,9 +801,9 @@ Proof.
   iDestruct (big_sepM_insert
     _ (delete slot sbvmap) slot (false, None) with "[Ms Sact Sv Sv2]") as
     "Ms".
-  { by rewrite lookup_delete. }
+  { by rewrite lookup_delete_eq. }
   { by do 2 iFrame. }
-  rewrite insert_delete_insert.
+  rewrite insert_delete_eq.
 
   (* commit *)
   iMod ("Commit" with "[-]") as "HΦ"; last (iModIntro; auto; by iApply "HΦ").
@@ -829,7 +829,7 @@ Proof.
   iDestruct "B" as (γm γxs) "(%Hγ & Bhd & Mphys & ●Mm & ●L)";
   iDestruct "Mphys" as "(#Lphys & Ms & %Mdom)".
   have [[act v] Ml] : is_Some (sbvmap !! slot).
-  { apply Mdom. by eapply elem_of_list_lookup_2. }
+  { apply Mdom. by eapply list_elem_of_lookup_2. }
   iDestruct (big_sepM_lookup_acc _ _ _ _ Ml with "Ms") as "[Sphys Ms]".
   iDestruct "Sphys" as "(Sact & Sv & %Sav)".
   wp_load.
@@ -846,7 +846,7 @@ Proof.
   iDestruct "B" as (γm γxs) "(%Hγ & Bhd & Mphys & ●Mm & ●L)";
   iDestruct "Mphys" as "(#Lphys & Ms & %Mdom)".
   have [[act v] Ml] : is_Some (sbvmap !! slot).
-  { apply Mdom. by eapply elem_of_list_lookup_2. }
+  { apply Mdom. by eapply list_elem_of_lookup_2. }
   iDestruct (big_sepM_lookup_acc _ _ _ _ Ml with "Ms") as "[Sphys Ms]".
   iDestruct "Sphys" as "(Sact & Sv & %Sav)".
   wp_load.
@@ -884,7 +884,7 @@ Proof.
   iDestruct "B" as (γm γxs) "(%Hγ & Bhd & Mphys & ●Mm & ●L)";
   iDestruct "Mphys" as "(#Lphys & Ms & %Mdom)".
   have [[act v] Ml] : is_Some (sbvmap !! slot).
-  { apply Mdom. by eapply elem_of_list_lookup_2. }
+  { apply Mdom. by eapply list_elem_of_lookup_2. }
   iDestruct (big_sepM_lookup_acc _ _ _ _ Ml with "Ms") as "[Sphys Ms]".
   iDestruct "Sphys" as "(Sact & Sv & %Sav)". simpl.
   iDestruct (phys_list_lookup _ _ _ Hidx with "Lphys") as "?".

@@ -65,7 +65,7 @@ Definition offer_state_rep (st : offer_state) : Z :=
   end.
 
 Definition offer_info γ_p (v : val) (st : offer_state) : iProp :=
-  ∃ (γ_pv γ_po : gname), ⌜γ_p = encode (γ_pv, γ_po)⌝ ∗ ghost_var γ_pv (1/2) st ∗ own γ_po (to_agree v).
+  ∃ (γ_pv γ_po : gname), ⌜γ_p = encode (γ_pv, γ_po)⌝ ∗ ghost_var_frac γ_pv (1/2) st ∗ own γ_po (to_agree v).
 
 Definition offer_data (p : loc) lv γ_p : iProp :=
   ∃ x st, ⌜lv = [ x; #(offer_state_rep st) ]⌝ ∗ offer_info γ_p x st.
@@ -86,7 +86,7 @@ Definition offer_inv (offer_loc : blk) (v : val) (γn γo : gname) (P Q : iProp)
 
 (* Ownership of the stack *)
 Definition EStack (γ : gname) (xs : list val) : iProp :=
-  ∃ (γs γof : gname), ⌜γ = encode(γs, γof)⌝ ∗ ghost_var γs (1/2)%Qp xs.
+  ∃ (γs γof : gname), ⌜γ = encode(γs, γof)⌝ ∗ ghost_var_frac γs (1/2)%Qp xs.
 
 Global Instance EStack_Timeless γs xs: Timeless (EStack γs xs).
 Proof. apply _. Qed.
@@ -108,12 +108,12 @@ Definition OfferInternalInv (st : loc) (γe γ γs γof : gname) : iProp :=
   ∃ offer_rep (offers : gmap blk gname),
     (st +ₗ offer) ↦ #(oblk_to_lit offer_rep) ∗
     IsOffer γe γ offer_rep offers ∗
-    ghost_map_auth γof 1 offers ∗
+    ghost_map_auth_frac γof 1 offers ∗
     [∗ map] off ↦ γn ∈ offers, rcu.(Managed) γe off γn nodeSize offer_data.
 
 Definition EStackInternalInv (st : loc) (γe γ γs γof : gname) : iProp :=
   ∃ (h : option blk) (xs : list val),
-    phys_list γe h xs ∗ (st +ₗ head) ↦ #(oblk_to_lit h) ∗ ghost_var γs (1/2)%Qp xs ∗
+    phys_list γe h xs ∗ (st +ₗ head) ↦ #(oblk_to_lit h) ∗ ghost_var_frac γs (1/2)%Qp xs ∗
     OfferInternalInv st γe γ γs γof.
 
 (* Persistent assertions about the stack *)

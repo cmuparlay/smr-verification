@@ -1,6 +1,7 @@
 From stdpp Require Import gmap.
 From iris.algebra Require Export cmra coPset.
 From iris.algebra Require Import updates local_updates big_op.
+From iris.algebra Require Import stepindex_finite.
 From iris.prelude Require Import options.
 
 (** * coPset lemmas based on nat_tokens.v by Hoang-Hai Dang **)
@@ -15,12 +16,12 @@ Lemma coPset_from_ex_gt i p:
   p ∈ coPset_from_ex i ↔ (i < Pos.to_nat p)%nat.
 Proof.
   rewrite elem_of_difference elem_of_gset_to_coPset.
-  rewrite elem_of_list_to_set elem_of_list_fmap. split.
+  rewrite elem_of_list_to_set list_elem_of_fmap. split.
   - move => [_ /= NIn].
     apply: not_ge => ?. apply: NIn.
-    exists (Pos.to_nat p). rewrite Pos2Nat.id elem_of_list_In in_seq. lia.
+    exists (Pos.to_nat p). rewrite Pos2Nat.id list_elem_of_In in_seq. lia.
   - move => Lt. split; [done|].
-    move => [n [Eqn /elem_of_list_In /in_seq [Ge1 Lt2]]].
+    move => [n [Eqn /list_elem_of_In /in_seq [Ge1 Lt2]]].
     subst. rewrite Nat2Pos.id_max in Lt. lia.
 Qed.
 
@@ -37,7 +38,7 @@ Proof.
   rewrite disjoint_singleton_l coPset_from_ex_gt SuccNat2Pos.id_succ. lia.
 Qed.
 
-Local Ltac simplify_gset_to_coPset := set_unfold; setoid_rewrite elem_of_gset_to_coPset; set_unfold.
+Local Ltac simplify_gset_to_coPset := set_unfold; try setoid_rewrite elem_of_gset_to_coPset; set_unfold.
 
 Lemma gset_to_coPset_union X Y :
   gset_to_coPset (X ∪ Y) = gset_to_coPset X ∪ gset_to_coPset Y.
@@ -80,15 +81,18 @@ Proof. simplify_gset_to_coPset. set_solver. Qed.
 
 Lemma gset_to_coPset_eq (X Y: gset positive) :
   gset_to_coPset X = gset_to_coPset Y ↔ X = Y.
-Proof. by simplify_gset_to_coPset. Qed.
+Proof.
+  split; [|by intros ->]. intros HXY. apply set_eq=> x.
+  by rewrite -!elem_of_gset_to_coPset HXY.
+Qed.
 
 Lemma gset_to_coPset_empty :
   gset_to_coPset ∅ = ∅.
-Proof. set_solver. Qed.
+Proof. apply set_eq=> x. by rewrite elem_of_gset_to_coPset !elem_of_empty. Qed.
 
 Lemma gset_to_coPset_empty_inv X :
   gset_to_coPset X = ∅ → X = ∅.
-Proof. by simplify_gset_to_coPset. Qed.
+Proof. intros HX. apply set_eq=> x. rewrite -elem_of_gset_to_coPset HX. set_solver. Qed.
 
 Lemma coPset_difference_top_empty:
   ⊤ ∖ ∅ = (⊤ : coPset).

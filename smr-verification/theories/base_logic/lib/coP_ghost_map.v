@@ -113,7 +113,7 @@ Section lemmas.
     k1 ↪c[γ] v1 -∗ k2 ↪c[γ]{E2} v2 -∗ ⌜k1 ≠ k2⌝.
   Proof. apply coP_ghost_map_elem_frac_ne. by apply: coPneset_top_disjoint. Qed.
 
-  (** * Lemmas about [ghost_map_auth] *)
+  (** * Lemmas about [ghost_map_auth_frac] *)
   Lemma coP_ghost_map_alloc_strong P m :
     pred_infinite P →
     ⊢ |==> ∃ γ, ⌜P γ⌝ ∗ coP_ghost_map_auth γ 1 m ∗ [∗ map] k ↦ v ∈ m, k ↪c[γ] v.
@@ -176,7 +176,7 @@ Section lemmas.
     done.
   Qed.
 
-  (** * Lemmas about the interaction of [ghost_map_auth] with the elements *)
+  (** * Lemmas about the interaction of [ghost_map_auth_frac] with the elements *)
   Lemma coP_ghost_map_lookup {γ q m k E v} :
     coP_ghost_map_auth γ q m -∗ k ↪c[γ]{E} v -∗ ⌜m !! k = Some v⌝.
   Proof.

@@ -265,7 +265,7 @@ Proof.
   apply coP_cinv_contractive, dist_later_fin_iff.
   destruct n; [done|]. simpl in *.
   repeat apply bi.exist_ne => ?. repeat apply bi.sep_ne; try done.
-  apply Hxy. lia.
+  apply dist_later_S in Hxy. apply Hxy.
 Qed.
 
 Definition BaseGuardedNodeInfo γe γg (p : blk) (i_p : positive) (size_i : nat) R : iProp :=
@@ -285,8 +285,8 @@ Definition Protected γtok γinfo γptrs (s : nat) (i_p : positive) (p : blk) : 
 Definition EBRAuth γe info_a retired : iProp :=
   ∃ info γsb γtok γinfo γptrs γeh γrs γU γV γR γe_nums (d : loc),
     ⌜γe = encode (γsb, γtok, γinfo, γptrs, γeh, γrs, γU, γV, γR, γe_nums, d)⌝ ∗
-    ghost_map_auth γinfo (1/2) info ∗
-    ghost_var γrs (1/2) retired ∗
+    ghost_map_auth_frac γinfo (1/2) info ∗
+    ghost_var_frac γrs (1/2) retired ∗
     ⌜info_a = fst <$> info⌝.
 
 Global Instance EBRAuth_timeless γe info_a retired : Timeless (EBRAuth γe info_a retired) | 2.
@@ -295,10 +295,10 @@ Proof. apply _. Qed.
 Definition EBRDomain γsb γtok γinfo γptrs γeh γrs γU γV γR γe_nums (d lBag rList : loc) : iProp :=
   ∃ info ptrs sbvmap slist rL ehist,
     let retired := fold_hist ehist in
-    ghost_map_auth γinfo (1/2) info ∗
+    ghost_map_auth_frac γinfo (1/2) info ∗
     coP_ghost_map_auth γptrs 1 ptrs ∗
     epoch_history_auth γeh ehist ∗
-    ghost_var γrs (1/2) retired ∗
+    ghost_var_frac γrs (1/2) retired ∗
 
     sbs.(SlotBag) γsb lBag sbvmap slist ∗
     rls.(RetiredList) rList rL ∗
@@ -372,7 +372,7 @@ Definition BaseGuard γe γg (g : loc) Syn G : iProp :=
 
       let finalized := fold_hist ehistF in
 
-      ghost_map_auth γg 1 G ∗
+      ghost_map_auth_frac γg 1 G ∗
       ⌜Syn = finalized ∧ length ehistF = e - 1⌝ ∗
       epoch_history_finalized γeh ehistF ∗
       toks γtok ((⊤ ∖ (gset_to_coPset finalized)) ∖ (gset_to_coPset (range G))) {[sid idx]} ∗
@@ -395,11 +395,11 @@ Proof.
   iInduction (G) as [|p i_p G FRESH_l IH] using map_ind.
   { rewrite range_empty gset_to_coPset_empty. iApply token2_get_empty_1. }
 
-  iDestruct (big_sepM_delete _ _ p  with "Prot") as "[[#p P] Prot]"; [apply lookup_insert|simpl].
+  iDestruct (big_sepM_delete _ _ p  with "Prot") as "[[#p P] Prot]"; [apply lookup_insert_eq|simpl].
   iDestruct "P" as (??) "(#i↪ & pc & cinv & #Ex)".
   iMod (exchange_stok_get with "Ex pc cinv") as "T"; [solve_ndisj|].
 
-  rewrite delete_insert; auto.
+  rewrite delete_insert_id; auto.
   iMod ("IH" with "Prot") as "T'". iClear "IH".
   rewrite range_insert // gset_to_coPset_union gset_to_coPset_singleton.
   iModIntro.
@@ -464,8 +464,8 @@ Proof.
   { apply singleton_subseteq_l. by rewrite elem_of_dom. }
   iFrame.
   iDestruct (big_sepM_delete with "UF") as "[U UF]"; eauto.
-  iApply (big_sepM_delete _ _ i); first by rewrite lookup_insert.
-  rewrite delete_insert_delete. iFrame.
+  iApply (big_sepM_delete _ _ i); first by rewrite lookup_insert_eq.
+  rewrite delete_insert_eq. iFrame.
 Qed.
 
 Lemma UnlinkFlags_update_notin γU γc_i info ehist i p k :
@@ -622,7 +622,7 @@ Proof.
     iApply big_sepL_delete; eauto.
     iSplitL "●V1I Ho".
     { iExists b,v,false. iFrame. iPureIntro.
-      split; [by rewrite lookup_insert|inversion 1]. }
+      split; [by rewrite lookup_insert_eq|inversion 1]. }
     iApply (big_sepL_mono with "GE1"); last auto.
     iIntros (i l Hi) "GEi".
     case_decide as EQi; auto.
@@ -831,7 +831,7 @@ Proof.
     destruct (sbvmap !! slot') as [e|] eqn:Hslot'; [|done].
     rewrite lookup_insert_ne; [|intros ->; congruence].
     rewrite Hslot'. iFrame.
-  - rewrite lookup_insert. iFrame.
+  - rewrite lookup_insert_eq. iFrame.
 Qed.
 
 Lemma slot_infos_reactivate_slot slot γV γtok γeh γe_nums slist sbvmap si ge v':
@@ -852,7 +852,7 @@ Proof.
       rewrite lookup_insert_ne; [iFrame|].
       intros <-. rewrite -NoDup_snoc in NoDup.
       destruct NoDup as [NoDup NotIn]. apply NotIn.
-      rewrite elem_of_list_lookup. eauto.
+      rewrite list_elem_of_lookup. eauto.
     - simplify_map_eq. assert (si = length slist) as ->.
       { eapply NoDup_lookup; [done..|]. apply snoc_lookup. }
       iDestruct "slot'" as "($ & [$ $] & $)".
@@ -899,7 +899,7 @@ Proof.
     rewrite -top_union_difference. iFrame. }
 
   destruct v; iFrame.
-  - iApply big_sepL_delete; eauto. rewrite lookup_insert.
+  - iApply big_sepL_delete; eauto. rewrite lookup_insert_eq.
     iSplitL "●VTI TTI ●MI".
     { iExists false. iFrame.
       rewrite ghost_vars2_union_1; last set_solver.
@@ -908,7 +908,7 @@ Proof.
     iIntros (i p Hp) "SI". case_decide as Eqn; auto.
     rewrite lookup_insert_ne; auto.
     intro; subst. eapply Eqn, NoDup_lookup; eauto.
-  - iApply big_sepL_delete; eauto. rewrite lookup_insert. iFrame.
+  - iApply big_sepL_delete; eauto. rewrite lookup_insert_eq. iFrame.
     iApply big_sepL_mono; last auto.
     iIntros (i p Hp) "SI". case_decide as Eqn; auto.
     rewrite lookup_insert_ne; auto.
@@ -941,7 +941,7 @@ Proof.
     rewrite -top_union_difference. iFrame. }
   iCombine "●VTI ●VTI'" as "●VTI". iFrame.
 
-  iApply big_sepL_delete; eauto. rewrite lookup_insert. iFrame.
+  iApply big_sepL_delete; eauto. rewrite lookup_insert_eq. iFrame.
   iApply big_sepL_mono; last auto.
   iIntros (i p Hp) "SI". case_decide as Eqn; auto.
   rewrite lookup_insert_ne; auto.
@@ -961,7 +961,7 @@ Proof.
   set reclaimable' := gset_to_coPset (fold_hist (take (ge - 2) (alter (union {[i]}) e ehist))).
   assert (reclaimable' = reclaimable) as ->; last iFrame.
   unfold reclaimable, reclaimable'. f_equal.
-  rewrite take_alter; [done|lia].
+  rewrite take_alter_ge; [done|lia].
 Qed.
 
 Lemma slot_infos_get_inactive_lb slot γV γtok γeh γe_nums slist sbvmap ehist (ge := length ehist - 1) si v:
@@ -1048,7 +1048,7 @@ Proof.
   iDestruct "Recl" as (reclaimed) "(γR_recl & γR_alive & γR_not_created & toks)".
   unfold ReclaimInfo.
   iExists reclaimed. rewrite length_alter. iFrame.
-  rewrite take_alter; [done|lia].
+  rewrite take_alter_ge; [done|lia].
 Qed.
 
 (*** Main EBR Lemmas ***)
@@ -1188,20 +1188,20 @@ Proof.
   { iNext. iFrame "∗#%". iSplit; [iPureIntro|repeat iSplit].
     - rewrite dom_insert_L. set_solver.
     - rewrite big_sepM_insert; [|done]. iSplitL "†p".
-      + iExists _. rewrite lookup_insert. iSplit; done.
+      + iExists _. rewrite lookup_insert_eq. iSplit; done.
       + iApply (big_sepM_mono with "Reg").
         iIntros (p' i' Hp') "[%info_i' [%Hinfo_i' †p]]". iExists _. iFrame.
         iPureIntro. rewrite lookup_insert_ne; [done|naive_solver].
     - iPureIntro. intros p' i' Hp'. destruct (decide (p = p')) as [->|NE].
-      + rewrite lookup_insert in Hp'. injection Hp' as [= <-].
-        rewrite lookup_insert. eauto.
+      + rewrite lookup_insert_eq in Hp'. injection Hp' as [= <-].
+        rewrite lookup_insert_eq. eauto.
       + rewrite lookup_insert_ne in Hp'; auto.
         apply HInfo in Hp' as [info_i' [Hi' Hinfo_i']]. subst.
         rewrite lookup_insert_ne; eauto. naive_solver.
     - iPureIntro. intros i' p' Hi' [[[? size_i'] γc_i'] [Hp' [= ->]]].
       destruct (decide (i = i')) as [->|NE].
-      + rewrite lookup_insert in Hp'. injection Hp' as [= <-].
-        by rewrite lookup_insert.
+      + rewrite lookup_insert_eq in Hp'. injection Hp' as [= <-].
+        by rewrite lookup_insert_eq.
       + rewrite lookup_insert_ne in Hp'; auto.
         specialize (HPtrs i' p' Hi'
                     ltac:(exists ({| addr := p'; len := size_i'|},γc_i'); naive_solver)).
@@ -1834,7 +1834,7 @@ Proof.
   iDestruct (slot_infos_mono_nats_auth_lb with "SInfo ●M") as %LE.
   iMod (epoch_history_retire with "ehist F") as "[ehist ◯ehist]"; [try lia; done..|].
   iMod (epoch_history_snapshot_get e with "ehist") as "[ehist #◯e_snap]".
-  { rewrite list_lookup_alter. rewrite He fmap_Some. eauto. }
+  { rewrite list_lookup_alter_eq. rewrite He fmap_Some. eauto. }
   assert (length ehist = length (alter (union {[i_p]}) e ehist)) as ->.
   { by rewrite length_alter. }
   (* Update [γU]. In particular, change [γU_i] to true. *)
@@ -1853,7 +1853,7 @@ Proof.
     iSplit.
     { iPureIntro. split; [intros _|done]. rewrite elem_of_fold_hist.
       exists e, ({[i_p]} ∪ unlinked_G). split; [|set_solver].
-      rewrite list_lookup_alter He fmap_Some.
+      rewrite list_lookup_alter_eq He fmap_Some.
       exists unlinked_G. auto.
     }
     iApply (big_sepM_mono with "γU"). iIntros (i' info_i' Hi') "γU_i'".
@@ -1867,13 +1867,13 @@ Proof.
       rewrite elem_of_fold_hist. exists e'.
       destruct (decide (e' = e)) as [->|NE].
       + exists ({[i_p]} ∪ unlinked_e). split; [|apply elem_of_union_r; done].
-        rewrite list_lookup_alter fmap_Some. eauto.
+        rewrite list_lookup_alter_eq fmap_Some. eauto.
       + exists unlinked_e.  rewrite list_lookup_alter_ne; done.
     - intro ElemOf. apply In_imp. rewrite elem_of_fold_hist in ElemOf.
       destruct ElemOf as (e' & unlinked_e & He' & ElemOf).
       rewrite elem_of_fold_hist. exists e'.
       destruct (decide (e' = e)) as [->|NE].
-      + rewrite list_lookup_alter fmap_Some in He'.
+      + rewrite list_lookup_alter_eq fmap_Some in He'.
         destruct He' as (unlinked_e' & Hehist2e & He_union).
         subst.
         exists unlinked_e'. split; [done|].
@@ -1925,12 +1925,12 @@ Proof.
     destruct ElemOf as (e' & unlinked_e & Hehist2 &ElemOf).
     destruct (decide (e' = e)) as [->|NE_e]; last first.
     { rewrite list_lookup_alter_ne in Hehist2; last done. eauto. }
-    rewrite list_lookup_alter He fmap_Some in Hehist2.
+    rewrite list_lookup_alter_eq He fmap_Some in Hehist2.
     destruct Hehist2 as (unlinked_e' & Hu_G & Hunion ).
     injection Hu_G as [= <-]. subst. set_solver.
   - rewrite length_alter. lia.
   - set_solver.
-  - by rewrite length_alter take_alter; [|lia].
+  - by rewrite length_alter take_alter_ge; [|lia].
 Qed.
 
 Lemma may_advance_spec γsb γtok γinfo γptrs γeh γrs γU γV γR γe_nums (d lBag rList : loc) unlinked_e (e : nat) E :
@@ -2147,10 +2147,10 @@ Proof.
     assert (take (ge + 1 - 2) ehist' = take (ge - 2) ehist' ++ [u_ge]) as HistDiff.
     { apply list_eq. intros i. destruct (decide (i < ge - 2)) as [LT|GE].
       - rewrite lookup_app_l; [|rewrite length_take; lia].
-        rewrite !lookup_take; [done|lia..].
+        rewrite !lookup_take_lt; [done|lia..].
       - rewrite lookup_app_r; [|rewrite length_take; lia].
         destruct (decide (i = ge - 2)) as [->|NE].
-        + rewrite length_take_le; [|lia]. rewrite lookup_take; [|lia].
+        + rewrite length_take_le; [|lia]. rewrite lookup_take_lt; [|lia].
           assert (ge - 2 - (ge - 2) = 0) as -> by lia. by simplify_option_eq.
         + rewrite lookup_take_ge; [|lia]. rewrite lookup_ge_None_2; [done|].
           rewrite length_take /=. lia.
@@ -2252,7 +2252,7 @@ Proof.
         - apply union_least.
           + apply fold_hist_prefix, take_prefix_le. lia.
           + apply (ehist_elem_in_fold_hist _ (ge -2)).
-            rewrite lookup_take; [done|lia].
+            rewrite lookup_take_lt; [done|lia].
       }
       rewrite -!gset_to_coPset_difference -gset_to_coPset_subset.
       apply difference_mono_l. set_solver.
@@ -2446,7 +2446,7 @@ Proof.
     ) as i_in_ftl.
     { rewrite elem_of_gset_to_coPset elem_of_fold_hist.
       exists epoch1, uae. split; last set_solver.
-      rewrite lookup_take; auto. lia.
+      rewrite lookup_take_lt; auto. lia.
     }
     destruct (decide (i ∈ gset_to_coPset reclaimed)).
     { iDestruct (ghost_vars2_agree with "γR ●R1") as %V; [set_solver..|done]. }

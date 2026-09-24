@@ -23,18 +23,18 @@ Proof.
       apply irreflexivity in LT; done. }
     assert (i > j) as GT by lia.
     assert (R m n) as LT'.
-    { apply (elem_of_StronglySorted_app R (take (S j) L) (drop (S j) L) m n).
+    { apply (StronglySorted_app_1_elem_of R (take (S j) L) (drop (S j) L) m n).
       - rewrite -(take_drop (S j) L) in Sorted. by apply (Sorted_StronglySorted R).
       - apply elem_of_take; eauto.
-      - rewrite elem_of_list_lookup. exists (i - (S j)). rewrite lookup_drop -HLi. f_equal. lia.
+      - rewrite list_elem_of_lookup. exists (i - (S j)). rewrite lookup_drop -HLi. f_equal. lia.
     }
     assert (R m m) as EQ.
     { transitivity n; done. }
     apply irreflexivity in EQ; done.
-  - apply (elem_of_StronglySorted_app R (take (S i) L) (drop (S i) L) n m).
+  - apply (StronglySorted_app_1_elem_of R (take (S i) L) (drop (S i) L) n m).
     + rewrite -(take_drop (S i) L) in Sorted. by apply (Sorted_StronglySorted R).
     + apply elem_of_take. eauto.
-    + rewrite elem_of_list_lookup. exists (j - (S i)). rewrite lookup_drop -HLj. f_equal. lia.
+    + rewrite list_elem_of_lookup. exists (j - (S i)). rewrite lookup_drop -HLj. f_equal. lia.
 Qed.
 
 Lemma sorted_none_in_middle `{!Transitive R, !Irreflexive R} idx n m k L :
@@ -45,7 +45,7 @@ Lemma sorted_none_in_middle `{!Transitive R, !Irreflexive R} idx n m k L :
   Sorted R L →
   k ∉ L.
 Proof.
-  intros Hn Hm Rnk Rkn Sorted [idx' Hk]%elem_of_list_lookup.
+  intros Hn Hm Rnk Rkn Sorted [idx' Hk]%list_elem_of_lookup.
   assert (idx' < idx + 1).
   { apply (sorted_strict_inc idx' (idx + 1) L k m); auto. }
   assert(idx < idx').
@@ -61,17 +61,17 @@ Proof.
   replace (z :: L) with ([z] ++ L) in Sorted; [|by simplify_list_eq].
   apply NoDup_cons. split.
   - intros ElemOf.
-    apply (elem_of_StronglySorted_app R [z] L z z) in Sorted; [|by apply elem_of_list_singleton|done].
+    apply (StronglySorted_app_1_elem_of R [z] L z z) in Sorted; [|by apply list_elem_of_singleton|done].
     by apply irreflexivity in Sorted.
   - apply IH.
-    by apply StronglySorted_app_inv_r, StronglySorted_Sorted in Sorted.
+    by apply StronglySorted_app_1_r, StronglySorted_Sorted in Sorted.
 Qed.
 
 Lemma drop_sorted `{!Transitive R} i L :
   Sorted R L → Sorted R (drop i L).
 Proof.
   intros Sorted. rewrite -(take_drop i L) in Sorted.
-  apply Sorted_StronglySorted,StronglySorted_app_inv_r in Sorted; [|done].
+  apply Sorted_StronglySorted,StronglySorted_app_1_r in Sorted; [|done].
   by apply StronglySorted_Sorted.
 Qed.
 
@@ -79,7 +79,7 @@ Lemma take_sorted `{!Transitive R} i L :
   Sorted R L → Sorted R (take i L).
 Proof.
   intros Sorted. rewrite -(take_drop i L) in Sorted.
-  apply Sorted_StronglySorted,StronglySorted_app_inv_l in Sorted; [|done].
+  apply Sorted_StronglySorted,StronglySorted_app_1_l in Sorted; [|done].
   by apply StronglySorted_Sorted.
 Qed.
 
@@ -124,7 +124,7 @@ Proof.
   apply (sorted_strict_inc (length (take i L) - 1) j L z1 z2); auto.
   - destruct i.
     { rewrite take_0 in Hz1. simpl in *. inversion Hz1. }
-    rewrite lookup_take in Hz1; [done|]. rewrite length_take_le; lia.
+    rewrite lookup_take_lt in Hz1; [done|]. rewrite length_take_le; lia.
   - by rewrite lookup_drop Nat.add_0_r in Hz2.
   - rewrite length_take_le; lia.
 Qed.
@@ -273,11 +273,11 @@ Proof.
   assert (z' ∈ L') as ElemOf.
   { rewrite EQN. apply elem_of_cons. by left. }
   subst L'.
-  do 2 apply elem_of_list_fmap_2 in ElemOf as [[? ?] [[= <-] ElemOf]].
-  apply elem_of_list_filter in ElemOf as [_ ElemOf].
-  do 2 apply (elem_of_list_fmap_1 fst) in ElemOf. simpl in *.
+  do 2 apply list_elem_of_fmap_1 in ElemOf as [[? ?] [[= <-] ElemOf]].
+  apply list_elem_of_filter in ElemOf as [_ ElemOf].
+  do 2 apply (list_elem_of_fmap_2 fst) in ElemOf. simpl in *.
   rewrite List.Forall_forall in z_LT.
-  by apply z_LT, elem_of_list_In.
+  by apply z_LT, list_elem_of_In.
 Qed.
 
 Lemma next_not_tail_is_Some idx L k b p (p_next : option A) :
@@ -332,7 +332,7 @@ Proof.
   unfold lookup_post. intros Hp Hc Hp_k Hc_k LSort.
   destruct b.
   - (* key found *)
-    subst c_k. rewrite elem_of_list_lookup. eauto.
+    subst c_k. rewrite list_elem_of_lookup. eauto.
   - (* key not found *)
     apply (sorted_inf_Z_none_in_middle idx p_k c_k (FinInt k) L); auto.
     by rewrite Nat.add_1_r.
@@ -349,12 +349,12 @@ Lemma prove_insert_succ_post (p_k c_k : inf_Z) (p c n : A) (idx : nat) (b : bool
 Proof.
   intros HLp HLc Hp_k Hc_k HL. split.
   - (* k must be a element of L. But L is sorted, contradiction *)
-    intros [? H_fil_L]%elem_of_list_lookup.
-    do 2 (apply list_lookup_fmap_Some in H_fil_L as [[? ?] [H_fil_L [= <-]]]).
-    apply elem_of_list_lookup_2,elem_of_list_filter in H_fil_L as [? [idx' Hidx']%elem_of_list_lookup].
+    intros [? H_fil_L]%list_elem_of_lookup.
+    do 2 (apply list_lookup_fmap_Some in H_fil_L as [[? ?] [[= <-] H_fil_L]]).
+    apply list_elem_of_lookup_2,list_elem_of_filter in H_fil_L as [? [idx' Hidx']%list_elem_of_lookup].
     get_first Hidx'. get_first HLp. get_first HLc.
     apply (sorted_inf_Z_none_in_middle idx p_k c_k (FinInt k) L.*1.*1); auto.
-    rewrite elem_of_list_lookup. eauto.
+    rewrite list_elem_of_lookup. eauto.
   - (* exists (`idx` of `p_k` in `get_abs_state L`) + 1. *)
     set (idx' := length (get_abs_state (take idx L))).
     exists (S idx').
@@ -377,7 +377,7 @@ Lemma prove_insert_fail_post idx c_k (L : list inf_Z) (k : Z) :
   c_k = FinInt k →
   L !! idx = Some c_k →
   insert_fail_post L L k.
-Proof. split; [|done]. subst c_k. rewrite elem_of_list_lookup. eauto. Qed.
+Proof. split; [|done]. subst c_k. rewrite list_elem_of_lookup. eauto. Qed.
 
 Lemma prove_delete_succ_post (c : A) idx L (k : Z) (L' := <[idx:=(FinInt k, true, c)]> L) :
   L !! idx = Some (FinInt k, false, c) →
@@ -441,10 +441,10 @@ Proof.
   intros Post.
   rewrite comm.
   destruct b; rewrite /lookup_post /= in Post.
-  - apply bool_decide_eq_true,elem_of_list_to_set, elem_of_list_omap.
+  - apply bool_decide_eq_true,elem_of_list_to_set, list_elem_of_omap.
     eexists. split; [exact Post|]; done.
   - apply bool_decide_eq_false,not_elem_of_list_to_set.
-    intros [[|k'|] [? [= <-]]]%elem_of_list_omap.
+    intros [[|k'|] [? [= <-]]]%list_elem_of_omap.
     naive_solver.
 Qed.
 
@@ -460,13 +460,13 @@ Lemma insert_list_post_to_set_post b (L L' : list inf_Z) (k : Z) (S := harris_li
 Proof.
   intros Post. destruct b; subst S.
   - destruct Post as [NotIn [idx ->]]. split.
-    + intros [[| |] [? [= ->]]]%elem_of_list_to_set%elem_of_list_omap.
+    + intros [[| |] [? [= ->]]]%elem_of_list_to_set%list_elem_of_omap.
       naive_solver.
     + rewrite -{2}(take_drop idx L).
       rewrite /insert_middle !harris_list_into_set_app /=.
       set_solver.
   - destruct Post as [In ->]. split.
-    + apply elem_of_list_to_set,elem_of_list_omap.
+    + apply elem_of_list_to_set,list_elem_of_omap.
       exists (FinInt k). done.
     + done.
 Qed.
@@ -484,18 +484,18 @@ Lemma delete_list_post_to_set_post b (L L' : list inf_Z) (k : Z) (S := harris_li
 Proof.
   intros Post SortL. destruct b; subst S.
   - destruct Post as [idx [Hidx ->]]. split.
-    + apply elem_of_list_to_set,elem_of_list_omap.
+    + apply elem_of_list_to_set,list_elem_of_omap.
       exists (FinInt k). split; [|done].
-      rewrite elem_of_list_lookup. eauto.
+      rewrite list_elem_of_lookup. eauto.
     + assert (k ∉ harris_list_into_set (delete idx L)) as NotIn.
-      { intros [[|k'|] [[idx' Hidx']%elem_of_list_lookup [= ->]]]%elem_of_list_to_set%elem_of_list_omap.
+      { intros [[|k'|] [[idx' Hidx']%list_elem_of_lookup [= ->]]]%elem_of_list_to_set%list_elem_of_omap.
         apply sorted_inf_Z_nodup in SortL as NoDupL.
         rewrite NoDup_alt in NoDupL.
         destruct (decide (idx' < idx)) as [LT|GE%not_lt].
-        - rewrite lookup_delete_lt in Hidx'; [|lia].
+        - rewrite list_lookup_delete_lt in Hidx'; [|lia].
           specialize (NoDupL idx idx' (FinInt k) ltac:(done) ltac:(done)).
           lia.
-        - rewrite lookup_delete_ge in Hidx'; [|lia].
+        - rewrite list_lookup_delete_ge in Hidx'; [|lia].
           specialize (NoDupL idx (S idx') (FinInt k) ltac:(done) ltac:(done)).
           lia.
       }
@@ -505,7 +505,7 @@ Proof.
       rewrite !harris_list_into_set_app harris_list_into_set_cons.
       set_solver.
   - destruct Post as [NotIn ->]. split.
-    + intros [[| |] [? [= ->]]]%elem_of_list_to_set%elem_of_list_omap.
+    + intros [[| |] [? [= ->]]]%elem_of_list_to_set%list_elem_of_omap.
       naive_solver.
     + done.
 Qed.

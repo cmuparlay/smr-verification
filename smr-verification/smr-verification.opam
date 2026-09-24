@@ -2,7 +2,7 @@ opam-version: "2.0"
 name: "smr-verification"
 synopsis: "Verification of safe memory reclamation (SMR) algorithms"
 description: """
-The Coq implementation of hazard pointer and epoch-based reclamation
+The Rocq implementation of hazard pointer and epoch-based reclamation
 algorithm, with their specifications and proof.
 """
 license: "BSD-3-Clause"
@@ -15,7 +15,10 @@ bug-reports: "https://cp-git.kaist.ac.kr/verification/smr/issues"
 dev-repo: "git+https://cp-git.kaist.ac.kr/verification/smr.git"
 
 depends: [
-  "coq-iris"  { = "4.3.0" }
+  "rocq-core" { = "9.2.0" }
+  "rocq-stdlib"
+  "rocq-iris" { = "dev.2026-07-19.0.5b67fadf" }
+  "rocq-diaframe" { = "dev.2026-08-13.0.c7a7406d" }
 ]
 
 build: [make "-j%{jobs}%" ]
