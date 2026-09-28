@@ -110,6 +110,7 @@ theories/hazptr/code_harris_operations.v
 theories/hazptr/code_harris_michael_find.v
 theories/hazptr/code_harris_find.v
 theories/hazptr/code_cached_wf.v
+theories/hazptr/code_cached_me.v
 
 ## Specs
 theories/hazptr/spec_hazptr.v
