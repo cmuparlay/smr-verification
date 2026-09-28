@@ -1,7 +1,7 @@
 From smr.lang Require Import notation.
 From iris.prelude Require Import options.
 
-From smr Require Import hazptr.spec_hazptr.
+From smr Require Import hazptr.spec_hazptr hazptr.code_llsc_thread.
 From smr.lang Require Import lib.array.
 
 (** HeapLang translation of the Cached-MemoryEfficient LL/SC big atomic
@@ -20,11 +20,6 @@ Notation cache_off := 2 (only parsing).
 (** Backup node layout: [value] occupies offsets [0 .. n-1], and [seqnum] is
     at offset [n]. *)
 
-(** Thread-local state ([static thread_local] members h1, h2 and expected_tag) *)
-Notation h1_off := 0 (only parsing).
-Notation h2_off := 1 (only parsing).
-Notation expected_tag_off := 2 (only parsing).
-
 Section cached_me.
 
   Variable (hazptr : hazard_pointer_code).
@@ -37,23 +32,6 @@ Section cached_me.
       "dst" +ₗ #domain_off <- "domain";;
       array_copy_to ("dst" +ₗ #cache_off) "src" #n;;
       "dst".
-
-  (** Allocate the thread-local state of a thread. *)
-  Definition cached_me_thread_new : val :=
-    λ: "domain",
-      let: "ctx" := AllocN #3 #0 in
-      "ctx" +ₗ #h1_off <- hazptr.(shield_new) "domain";;
-      "ctx" +ₗ #h2_off <- hazptr.(shield_new) "domain";;
-      (* expected_tag = 0 *)
-      "ctx" +ₗ #expected_tag_off <- #NULL;;
-      "ctx".
-
-  (** Deallocate the thread-local state of a thread. *)
-  Definition cached_me_thread_drop : val :=
-    λ: "ctx",
-      hazptr.(shield_drop) !("ctx" +ₗ #h1_off);;
-      hazptr.(shield_drop) !("ctx" +ₗ #h2_off);;
-      Free #3 "ctx".
 
   Definition is_pointer : val :=
     λ: "t", untag "t" ≠ #NULL.

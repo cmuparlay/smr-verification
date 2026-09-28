@@ -110,7 +110,9 @@ theories/hazptr/code_harris_operations.v
 theories/hazptr/code_harris_michael_find.v
 theories/hazptr/code_harris_find.v
 theories/hazptr/code_cached_wf.v
+theories/hazptr/code_llsc_thread.v
 theories/hazptr/code_cached_me.v
+theories/hazptr/code_cached_wf_llsc.v
 
 ## Specs
 theories/hazptr/spec_hazptr.v
@@ -122,6 +124,7 @@ theories/hazptr/spec_rdcss.v
 theories/hazptr/spec_cldeque.v
 theories/hazptr/spec_ordered_set.v
 theories/hazptr/spec_big_atomic.v
+theories/hazptr/spec_big_atomic_llsc.v
 
 ## Proofs
 theories/hazptr/proof_hazptr.v
@@ -137,6 +140,8 @@ theories/hazptr/proof_harris_operations.v
 theories/hazptr/proof_harris_michael_find.v
 theories/hazptr/proof_harris_find.v
 theories/hazptr/proof_cached_wf.v
+theories/hazptr/proof_cached_me.v
+theories/hazptr/proof_cached_wf_llsc.v
 
 theories/hazptr/closed_proofs.v
 theories/hazptr/client.v
