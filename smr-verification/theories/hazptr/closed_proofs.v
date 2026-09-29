@@ -20,6 +20,7 @@ From smr.hazptr Require Export spec_cldeque code_cldeque proof_cldeque.
 From smr.hazptr Require Export spec_ordered_set code_harris_operations proof_harris_michael_find proof_harris_find.
 From smr.hazptr Require Export spec_big_atomic.
 From smr.hazptr Require Export code_cached_wf proof_cached_wf.
+From smr.hazptr Require Export spec_writable_big_atomic code_writable_big_atomic proof_writable_big_atomic.
 
 From iris.prelude Require Import options.
 
@@ -35,6 +36,7 @@ Definition cldequeN := nroot .@ "cldeque".
 Definition hsN := nroot .@ "hs".
 Definition hmsN := nroot .@ "hms".
 Definition cached_wfN := nroot .@ "cached_wf".
+Definition writableN := nroot .@ "writable".
 
 Class hazptrG Σ := HazPtrG {
   #[local] hazptr_reclamationG :: reclamationG Σ;
@@ -308,3 +310,25 @@ Definition cached_wf_impl Σ `{!heapGS Σ, !hazptrG Σ, !cached_wfG Σ}
   big_atomic_read_spec := cached_wf_read_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
   big_atomic_cas_spec := cached_wf_cas_spec cached_wfN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ);
 |}.
+
+(** Cached-WaitFree at any namespace. *)
+Definition cached_wf_impl_at Σ `{!heapGS Σ, !hazptrG Σ, !cached_wfG Σ} (N : namespace) (DISJ : N ## hazptrN)
+    : big_atomic_spec Σ N hazptrN DISJ (hazard_pointer_impl Σ) := {|
+  big_atomic_spec_code := cached_wf_code_impl;
+
+  BigAtomic := CachedWF;
+  IsBigAtomic := IsCachedWF N hazptrN (hazard_pointer_impl Σ);
+
+  BigAtomic_Timeless := CachedWF_Timeless;
+  IsBigAtomic_Persistent := IsCachedWF_Persistent N hazptrN (hazard_pointer_impl Σ);
+
+  big_atomic_new_spec := cached_wf_new_spec N hazptrN DISJ (hazard_pointer_impl Σ);
+  big_atomic_read_spec := cached_wf_read_spec N hazptrN DISJ (hazard_pointer_impl Σ);
+  big_atomic_cas_spec := cached_wf_cas_spec N hazptrN DISJ (hazard_pointer_impl Σ);
+|}.
+
+(** The wait-free Load/Store/CAS big atomic built on Cached-WaitFree. *)
+Definition writable_cached_wf_impl Σ `{!heapGS Σ, !hazptrG Σ, !cached_wfG Σ, !writableG Σ}
+    : writable_big_atomic_spec Σ writableN hazptrN ltac:(solve_ndisj) (hazard_pointer_impl Σ) :=
+  writable_big_atomic_impl writableN hazptrN _ (hazard_pointer_impl Σ)
+    (cached_wf_impl_at Σ (zN writableN) (zDISJ writableN hazptrN ltac:(solve_ndisj))).

@@ -42,18 +42,31 @@ Definition big_atomic_read_spec' : Prop :=
         big_atomic_read n ba @ ⊤,(↑readN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
       <<{ ∃∃ l, BigAtomic γ vs | RET #l; l ↦∗ vs }>>.
 
+(** CAS takes a prophecy [p], which it resolves at its compare-exchanges: a
+    successful CAS linearizes at a resolution with a successful compare-exchange
+    result, and all its earlier resolutions (like all resolutions of a failed
+    CAS) are with failed ones. A client can thus prophesy whether a CAS will
+    succeed, and learns it at the CAS's linearization point. *)
+Definition cas_failed_res (r : val * val) : Prop := ∃ w v, r = ((w, #false)%V, v).
+
+Definition cas_succ_res (pvs : list (val * val)) : Prop :=
+  ∃ rs w v pvs', Forall cas_failed_res rs ∧ pvs = rs ++ ((w, #true)%V, v) :: pvs'.
+
 Definition big_atomic_cas_spec' : Prop :=
-  ∀ γ ba n (l_expected l_desired : loc) (dq dq' : dfrac) (expected desired : list val),
+  ∀ γ ba n (l_expected l_desired : loc) (dq dq' : dfrac) (expected desired : list val) (p : proph_id) pvs,
     length expected = n → length desired = n →
       Forall val_is_unboxed expected → Forall val_is_unboxed desired →
-        IsBigAtomic γ ba n -∗ l_expected ↦∗{dq} expected -∗ l_desired ↦∗{dq'} desired -∗
+        IsBigAtomic γ ba n -∗ l_expected ↦∗{dq} expected -∗ l_desired ↦∗{dq'} desired -∗ proph p pvs -∗
           <<{ ∀∀ actual, BigAtomic γ actual }>>
-            big_atomic_cas n ba #l_expected #l_desired @ ⊤,(↑mainN ∪ ↑readN ∪ ↑casN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
-          <<{ if bool_decide (actual = expected) then 
-                BigAtomic γ desired 
-              else 
-                BigAtomic γ actual 
-            | RET #(bool_decide (actual = expected)); l_expected ↦∗{dq} expected ∗ l_desired ↦∗{dq'} desired  }>>.
+            big_atomic_cas n ba #l_expected #l_desired #p @ ⊤,(↑mainN ∪ ↑readN ∪ ↑casN ∪ ↑(ptrsN hazptrN)),↑(mgmtN hazptrN)
+          <<{ if bool_decide (actual = expected) then
+                BigAtomic γ desired ∗ ⌜expected = desired ∨ cas_succ_res pvs⌝
+              else
+                BigAtomic γ actual
+            | RET #(bool_decide (actual = expected));
+                l_expected ↦∗{dq} expected ∗ l_desired ↦∗{dq'} desired ∗
+                ∃ pvs', proph p pvs' ∗
+                  ⌜actual = expected ∨ ∃ rs, Forall cas_failed_res rs ∧ pvs = rs ++ pvs'⌝ }>>.
 
 End spec.
 

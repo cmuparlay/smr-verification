@@ -789,16 +789,49 @@ Section cached_wf.
       ⌜read_backup_wf log abstraction actual γ_backup γ_backup' backup backup'⌝ ∗
       ⌜read_valid_wf t ver actual cache γ_backup γ_backup' log validated⌝.
 
-  Definition AU_cas (Φ : val → iProp Σ) γ (expected desired : list val) (lexp ldes : loc) dq dq' : iProp Σ :=
+  Definition AU_cas (Φ : val → iProp Σ) γ (expected desired : list val) (lexp ldes : loc) dq dq' pvs : iProp Σ :=
        AU <{ ∃∃ actual, CachedWF γ actual }>
             @ ⊤ ∖ (↑mainN ∪ ↑readN ∪ ↑casN ∪ ↑ptrsN hazptrN), ↑mgmtN hazptrN
-          <{ if bool_decide (actual = expected) then CachedWF γ desired else CachedWF γ actual,
+          <{ if bool_decide (actual = expected) then CachedWF γ desired ∗ ⌜expected = desired ∨ cas_succ_res pvs⌝ else CachedWF γ actual,
              COMM lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #(bool_decide (actual = expected)) }>.
 
-  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp : blk) (lexp_src ldes : loc) (dq dq' : dfrac) (expected desired : list val) s : iProp Σ :=
+  (** The private postcondition of CAS, with the prophecy it was given. *)
+  Definition cas_post (Φ : val → iProp Σ) (p : proph_id) (pvs : list (val * val)) : val → iProp Σ :=
+    λ v, ((∃ pvs', proph p pvs' ∗ ⌜v = #true ∨ ∃ rs, Forall cas_failed_res rs ∧ pvs = rs ++ pvs'⌝) -∗ Φ v)%I.
+
+  Lemma AU_cas_intro Φ γ expected desired lexp ldes dq dq' p pvs :
+    AU <{ ∃∃ actual, CachedWF γ actual }>
+         @ ⊤ ∖ (↑mainN ∪ ↑readN ∪ ↑casN ∪ ↑ptrsN hazptrN), ↑mgmtN hazptrN
+       <{ if bool_decide (actual = expected) then CachedWF γ desired ∗ ⌜expected = desired ∨ cas_succ_res pvs⌝ else CachedWF γ actual,
+          COMM lexp ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired ∗
+            (∃ pvs', proph p pvs' ∗ ⌜actual = expected ∨ ∃ rs, Forall cas_failed_res rs ∧ pvs = rs ++ pvs'⌝) -∗
+            Φ #(bool_decide (actual = expected)) }> -∗
+    AU_cas (cas_post Φ p pvs) γ expected desired lexp ldes dq dq' pvs.
+  Proof.
+    iIntros "AU". rewrite /AU_cas. iAuIntro.
+    iApply (aacc_aupd with "AU"); first done.
+    iIntros (actual) "Hγ". iAaccIntro with "Hγ".
+    { iIntros "Hγ !>". iFrame. by iIntros "$ !>". }
+    iIntros "Hβ !>". iRight. iFrame "Hβ". rewrite /cas_post.
+    iIntros "HΦ !> [Hlexp Hldes] (%pvs' & Hp & %Hpvs)". iApply ("HΦ" with "[$Hlexp $Hldes $Hp]").
+    iPureIntro. destruct Hpvs as [Heq | ?]; last by right.
+    left. case_bool_decide; simplify_eq; done.
+  Qed.
+
+  Lemma cas_post_true Φ p pvs pvs' : proph p pvs' -∗ cas_post Φ p pvs #true -∗ Φ #true.
+  Proof. iIntros "Hp HΦ". iApply "HΦ". iFrame. by iLeft. Qed.
+
+  Lemma cas_post_false Φ p pvs pvs' rs :
+    pvs = rs ++ pvs' → Forall cas_failed_res rs →
+    proph p pvs' -∗ cas_post Φ p pvs #false -∗ Φ #false.
+  Proof. iIntros (??) "Hp HΦ". iApply "HΦ". iFrame. iPureIntro. right. eauto. Qed.
+
+  Ltac solve_failed_res := repeat (constructor; first by eexists _, _); constructor.
+
+  Definition cas_inv (Φ : val → iProp Σ) (γ γₑ γₗ γₜ γ_exp γd : gname) (lexp : blk) (lexp_src ldes : loc) (dq dq' : dfrac) (expected desired : list val) s (pvs : list (val * val)) : iProp Σ :=
     (hazptr.(Shield) γd s (Validated lexp γ_exp (node expected) (length expected)) ∗
       ((£ 1 ∗ (lexp_src ↦∗{dq} expected ∗ ldes ↦∗{dq'} desired -∗ Φ #false) ∗ (∃ b : bool, ghost_var_frac γₑ (1/2) b) ∗ ghost_var_frac γₗ (1/2) false) (* The failing write has already been linearized and its atomic update has been consumed *)
-    ∨ (£ 2 ∗ AU_cas Φ γ expected desired lexp_src ldes dq dq' ∗ ghost_var_frac γₑ (1/2) true ∗ ghost_var_frac γₗ (1/2) true)))
+    ∨ (£ 2 ∗ AU_cas Φ γ expected desired lexp_src ldes dq dq' pvs ∗ ghost_var_frac γₑ (1/2) true ∗ ghost_var_frac γₗ (1/2) true)))
     ∨ (token γₜ ∗ (∃ b : bool, ghost_var_frac γₑ (1/2) b) ∗ ∃ b : bool, ghost_var_frac γₗ (1/2) b).  (* The failing write has linearized and returned *)
 
   Lemma log_tokens_impl log l :
@@ -820,9 +853,9 @@ Section cached_wf.
     ∃ lexp, ⌜abstraction !! γ_exp = Some lexp⌝ ∗
       ghost_var_frac γₗ (1/2) (bool_decide (lactual = lexp)) ∗
       (* Note that the [lexp] bound here points to a copy of the expected value *)
-      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp_src ldes : loc) (dq dq' : dfrac) (expected desired : list val) s,
+      ∃ (Φ : val → iProp Σ) (γₜ : gname) (lexp_src ldes : loc) (dq dq' : dfrac) (expected desired : list val) s pvs,
         ghost_var_frac γₑ (1/2) (bool_decide (actual = expected)) ∗
-        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s).
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s pvs).
 
   Definition registry_inv γ γd lactual actual (requests : list (gname * gname * gname)) (abstraction : gmap gname blk) : iProp Σ :=
     [∗ list] '(γₗ, γₑ, γ_exp) ∈ requests,
@@ -1635,9 +1668,9 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
       by rewrite -not_true_iff_false Z.odd_spec -Odd_inj in H.
   Qed.
 
-  Lemma wp_array_copy_to_protected_off_inv (dst : loc) (src : blk) (vdst expected desired : list val) (i : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
+  Lemma wp_array_copy_to_protected_off_inv (dst : loc) (src : blk) (vdst expected desired : list val) (i : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s pvs :
     i + length vdst = length expected →
-    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s) -∗
+    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s pvs) -∗
       {{{ token γₜ ∗ dst ↦∗ vdst }}}
         array_copy_to #dst #(src +ₗ i) #(length vdst)
       {{{ RET #(); token γₜ ∗ dst ↦∗ drop i expected }}}.
@@ -1679,9 +1712,9 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
     { iCombine "Hγₜ Hlintok" gives %[]. }
   Qed.
 
-  Lemma wp_array_copy_to_protected_inv (dst : loc) (src : blk) (vdst expected desired : list val) (n : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s :
+  Lemma wp_array_copy_to_protected_inv (dst : loc) (src : blk) (vdst expected desired : list val) (n : nat) ψ γ γₑ γₗ γₜ γ_src γz lexp_src ldes dq dq' s pvs :
     length vdst = n → length expected = n →
-    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s) -∗
+    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_src γz src lexp_src ldes dq dq' expected desired s pvs) -∗
       {{{ token γₜ ∗ dst ↦∗ vdst }}}
         array_copy_to #dst #src #n
       {{{ RET #(); token γₜ ∗ dst ↦∗ expected }}}.
@@ -2123,7 +2156,7 @@ Lemma gmap_injective_insert `{Countable K, Countable V} (k : K) (v : V) (m : gma
 
 Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γₕ γᵢ γ_val γz γ_abs γₑ γₗ γₜ : gname) 
   (l d : loc) (n ver ver₁ t₁ : nat) (γ_backup₁ γ_backup₁' : gname) 
-  (dst backup₁ : blk) (lexp_src ldes : loc) (vers : list nat) (log₁ : gmap gname (list val)) ψ dq dq' s :
+  (dst backup₁ : blk) (lexp_src ldes : loc) (vers : list nat) (log₁ : gmap gname (list val)) ψ dq dq' s pvs :
     n > 0 →
     length actual₁ = n →
     length cache₁ = n →
@@ -2134,7 +2167,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     (if bool_decide (t₁ = 0) then Nat.Even ver₁ ∧ actual₁ = cache₁ ∧ γ_backup₁ = γ_backup₁' else t₁ = 1) →
     (if Nat.even ver₁ then log₁ !! γ_backup₁' = Some cache₁ else t₁ = 1) →
     inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γz γ_abs l n) -∗
-    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_backup₁ γz backup₁ lexp_src ldes dq dq' actual₁ desired s) -∗
+    inv casN (cas_inv ψ γ γₑ γₗ γₜ γ_backup₁ γz backup₁ lexp_src ldes dq dq' actual₁ desired s pvs) -∗
     (l +ₗ domain_off) ↦□ #d -∗
     hazptr.(IsHazardDomain) γz d -∗
     mono_nat_lb_own γᵥ ver₁ -∗
@@ -2246,7 +2279,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     - by iFrame.
     - rewrite /registry_inv. do 2 rewrite -> big_sepL_cons by done.
       (* (%Hfresh & Hlin & %Φ & %γₜ' & %lexp' & %ldes & %dq & %dq' & %expected & %desired & Hγₑ & #Hwinv) *)
-      iDestruct "Hreqs" as "[(%lexp & %Hlexp_abs & Hlin & %Φ & %γₜ & %lexp' & %ldes & %dq & %dq' & %expected & %desired & %s & Hγₑ & #Hcasinv) Hreqs]".
+      iDestruct "Hreqs" as "[(%lexp & %Hlexp_abs & Hlin & %Φ & %γₜ & %lexp' & %ldes & %dq & %dq' & %expected & %desired & %s & %pvs & Hγₑ & #Hcasinv) Hreqs]".
       iMod ("IH" with "Htok Hmanaged Hlogtokens Hγ Hreqs") as "(Htok & Hmanaged & Hlogtokens & Hγ & Hreqinv)".
       iInv casN as "[[S [(>Hcredit & HΦ & [%b >Hγₑ'] & >Hlin') | (>[Hcredit Hcredit'] & AU & >Hγₑ' & >Hlin')]] | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]" "Hclose".
       + iCombine "Hlin Hlin'" gives %[_ ->].
@@ -2393,12 +2426,12 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       + simpl in *. inv Hsorted. apply (IH i j); auto. lia.
   Qed.
 
-  Lemma already_linearized Φ γ γₗ γₑ γᵣ γₜ γ_exp γd (backup lexp : blk) (lexp_src ldes : loc) expected desired actual (dq dq' : dfrac) i abstraction s :
+  Lemma already_linearized Φ γ γₗ γₑ γᵣ γₜ γ_exp γd (backup lexp : blk) (lexp_src ldes : loc) expected desired actual (dq dq' : dfrac) i abstraction s pvs :
     lexp ≠ backup →
       abstraction !! γ_exp = Some lexp →
       (* inv readN (read_inv γ γᵥ γₕ γᵢ l (length expected)) -∗
         inv mainN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ l) -∗ *)
-        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s) -∗
+        inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_exp γd lexp lexp_src ldes dq dq' expected desired s pvs) -∗
           lexp_src ↦∗{dq} expected -∗
             ldes ↦∗{dq'} desired -∗
               registered γᵣ i γₗ γₑ γ_exp -∗
@@ -2411,7 +2444,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
   Proof.
     iIntros (Hne Habs) "#Hcasinv Hlexp Hldes #Hregistered Hreqinv Hγₜ Hcredit".
     rewrite /request_inv.
-    iDestruct "Hreqinv" as "(%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & %s' & Hγₑ & _)".
+    iDestruct "Hreqinv" as "(%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & %s' & %pvs' & Hγₑ & _)".
     iInv casN as "[[S [(>Hcredit' & HΦ & [%b >Hγₑ'] & >Hlin') | (>Hcredit' & AU & >Hγₑ' & >Hlin')]] | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]" "Hclose".
     + iCombine "Hlin Hlin'" gives %[_ Hneq%bool_decide_eq_false].
       iMod (ghost_var_update_halves (bool_decide (actual = expected)) with "Hγₑ Hγₑ'") as "[Hγₑ Hγₑ']". 
@@ -2780,7 +2813,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     (γ γᵥ γₕ γᵣ γᵢ γ_val γ_vers γₒ γd γ_abs γₑ γₗ γₜ : gname)
     (dq dq' : dfrac)
     (Φ : val → iProp Σ)
-    (idx₁ ver ver₁ i n : nat) s s' (d : loc) :
+    (idx₁ ver ver₁ i n : nat) s s' (d : loc) pvs :
     n > 0 →
     length cache = n →
     length expected = n →
@@ -2799,10 +2832,11 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     main_backup_wf log₁ abstraction₁ actual₁ γ_backup₁ backup →
     Forall val_is_unboxed desired →
     abstraction₁ !! γ_backup₁' = Some backup₁' →
+    cas_succ_res pvs →
     (* Persistent hypotheses *)
     inv readN (read_inv γ γᵥ γₕ γᵢ γ_val γd γ_abs l n) -∗
     inv mainN (cached_wf_inv γ γᵥ γₕ γᵢ γᵣ γ_vers γₒ γ_abs γd l n) -∗
-    inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_backup γd backup lexp ldes dq dq' expected desired s) -∗
+    inv casN (cas_inv Φ γ γₑ γₗ γₜ γ_backup γd backup lexp ldes dq dq' expected desired s pvs) -∗
     registered γᵣ i γₗ γₑ γ_backup -∗
     abstraction_frag_own γ_abs γ_backup backup -∗
     log_frag_own γₕ γ_backup expected -∗
@@ -2856,7 +2890,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
   Proof using DISJN.
     iIntros (Hpos Hlen_cache Hlen_exp Hlen_des Hne [Hindex₁ Hlenᵢ₁ Hnodup₁ Hrange₁] Hcache₁ Hloglen₁
             Hvallogged Hdomlogabs [Hdomord Hinj₁ Hidx₁ Hmono₁ Hubord₁] Hvers₁ Hdomvers₁ [Hactual₁ Habs]
-            Hunboxed Habs').
+            Hunboxed Habs' Hsucc).
     iIntros "#Hreadinv #Hinv #Hcasinv #◯Hγᵣ #◯Hγ_abs #◯Hγₕ #Hd #Hdom".
     iIntros "Hmanaged Hshield Hγₜ Htok Hnew_backup †Hnew_backup Hver Hlogtokens ●Hγᵥ Hcache".
     iIntros "Hlock Hcl ●Hγᵥ' ●Hγᵣ Hreginv ●Hγ_vers ●Hγᵢ' ●Hγₒ Hcl' ●Hγᵢ ●Hγ_val Hγ Hbackup₁ ●Hhist".
@@ -2874,7 +2908,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iDestruct (hazptr.(managed_exclusive) with "Hmanaged Hmanaged'") as %[]. }
     rewrite -(take_drop_middle _ _ _ Hagree).
     rewrite /registry_inv big_sepL_app big_sepL_cons /request_inv.
-    iDestruct "Hreginv" as "(Hlft & (%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & %s'' & Hγₑ & _) & Hrht)".
+    iDestruct "Hreginv" as "(Hlft & (%lexp' & %Hlexp_abs & Hlin & %Φ' & %γₜ' & %lexp_src' & %ldes' & %dq₁ & %dq₁' & %expected' & %desired' & %s'' & %pvs' & Hγₑ & _) & Hrht)".
     iInv casN as "[[S [(>Hcredit & HΦ & [%b >Hγₑ'] & >Hlin') | (>[Hcredit Hcredit'] & AU & >Hγₑ' & >Hlin')]] | (>Hlintok & [%b >Hγₑ'] & [%b' >Hlin'])]" "Hclose".
     (* Assumes we have already returned, which is impossible *)
     3: iCombine "Hγₜ Hlintok" gives %[].
@@ -2898,6 +2932,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     simplify_eq.
     rewrite bool_decide_eq_true_2; last done.
     iMod ("Hconsume" with "[$Hγ']") as "HΦ".
+    { iPureIntro. by right. }
     iMod ("Hclose" with "[Hγₜ Hlin' Hγₑ']") as "_".
     { iRight. iFrame. }
     rewrite Hdomlogabs.
@@ -3047,7 +3082,8 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
   Lemma cached_wf_cas_spec :
     big_atomic_cas_spec' cached_wfN hazptrN (cached_wf_cas hazptr) CachedWF IsCachedWF.
   Proof using DISJN.
-    iIntros (γ v n lexp ldes dq dq' expected desired Hlen_exp Hlen_des Hexpunboxed Hdesunboxed) "(%l & %d & %γₕ & %γᵥ & %γᵣ & %γᵢ & %γₒ & %γ_vers & %γ_val & %γ_abs & %γd & %Hpos & -> & #Hd & #Hd_domain & #Hreadinv & #Hinv) Hlexp Hldes %Φ AU".
+    iIntros (γ v n lexp ldes dq dq' expected desired p pvs Hlen_exp Hlen_des Hexpunboxed Hdesunboxed) "(%l & %d & %γₕ & %γᵥ & %γᵣ & %γᵢ & %γₒ & %γ_vers & %γ_val & %γ_abs & %γd & %Hpos & -> & #Hd & #Hd_domain & #Hreadinv & #Hinv) Hlexp Hldes Hp %Φ AU".
+    iPoseProof (AU_cas_intro with "AU") as "AU". rewrite /AU_cas.
     wp_rec.
     wp_pure credit:"Hcredit".
     wp_pures.
@@ -3059,7 +3095,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     pose proof Hvalid_wf as [Htag Hcons Hvalidated_iff Hvalidated_sub].
     wp_load.
     iPoseProof (mono_nat_lb_own_get with "●Hγᵥ") as "#Hlb".
-    iMod ("Hcl" with "[-AU Hlexp Hldes]") as "_".
+    iMod ("Hcl" with "[-AU Hlexp Hldes Hp]") as "_".
     { iExists ver, log, abstraction, actual, cache, γ_backup, γ_backup', backup, backup', index, validated, t.
     rewrite Loc.add_0. iFrame_fast. }
     iModIntro.
@@ -3100,7 +3136,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iMod ("Habort" with "[$Hγ'']") as "AU".
       iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
       { iFrame_fast_pure. }
-      iMod ("Hcl" with "[-AU Hdst Hlexp Hldes Hcredit Hcredit']") as "_".
+      iMod ("Hcl" with "[-AU Hdst Hlexp Hldes Hcredit Hcredit' Hp]") as "_".
       { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
         iFrame_fast. }
       by iFrame. }
@@ -3121,7 +3157,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iMod ("Hconsume" with "[$Hγ'']") as "HΦ".
       iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
       { iFrame_fast_pure. }
-      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hcredit Hcredit' Hprotected HΦ]") as "_".
+      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hcredit Hcredit' Hprotected HΦ Hp]") as "_".
       { iExists ver₁, log₁, abstraction₁, actual₁, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁. iFrame_fast "∗". }
       iModIntro. wp_pures.
       wp_apply (read'_spec actual₁ cache₁ vdst with "[//] [//] [//] [//] [//] [//] [//] [$]"); try done.
@@ -3139,15 +3175,17 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iIntros "_".
       wp_pures.
       iModIntro.
+      iApply (cas_post_false _ _ _ _ [] with "Hp"); [done | constructor |].
       iApply ("HΦ" with "[$]"). }
     destruct (decide (expected = desired)) as [-> | Hne].
     { iDestruct "Hlin" as "[_ Hconsume]".
       rewrite (bool_decide_eq_true_2 (desired = desired)) //.
       iFrame.
       iMod ("Hconsume" with "[$Hγ'']") as "HΦ".
+      { iPureIntro. by left. }
       iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
       { iFrame_fast_pure. }
-      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hcredit Hcredit' Hprotected HΦ]") as "_".
+      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hcredit Hcredit' Hprotected HΦ Hp]") as "_".
       { iExists ver₁, log₁, abstraction₁, desired, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁. iFrame_fast "∗". }
       iModIntro.
       wp_pures.
@@ -3172,6 +3210,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       { solve_ndisj. }
       iIntros "_".
       wp_pures. iModIntro.
+      iApply (cas_post_true with "Hp").
       iApply ("HΦ" with "[$]"). }
     iMod (ghost_var_alloc true) as "(%γₑ & Hγₑ & Hγₑ')".
     iMod (ghost_var_alloc true) as "(%γₗ & Hγₗ & Hγₗ')".
@@ -3179,7 +3218,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     iMod (registry_update γₗ γₑ γ_backup₁ with "●Hγᵣ") as "[●Hγᵣ #◯Hγᵣ]". 
     iDestruct "Hlin" as "[Hclose _]".
     iMod ("Hclose" with "[$Hγ'']") as "AU".
-    iMod (inv_alloc casN _ (cas_inv Φ γ γₑ γₗ γₜ γ_backup₁ γd backup₁ lexp ldes dq dq' expected desired s) with "[Hγₑ' Hγₗ' AU Hcredit Hcredit' Hprotected]") as "#Hcasinv".
+    iMod (inv_alloc casN _ (cas_inv (cas_post Φ p pvs) γ γₑ γₗ γₜ γ_backup₁ γd backup₁ lexp ldes dq dq' expected desired s pvs) with "[Hγₑ' Hγₗ' AU Hcredit Hcredit' Hprotected]") as "#Hcasinv".
     { iLeft. rewrite Hlen_exp. iFrame. iRight. iCombine "Hcredit Hcredit'" as "$". iFrame. }
     iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ Hγₗ Hγₑ]") as "_".
     { iFrame_fast "∗".
@@ -3188,7 +3227,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       rewrite (bool_decide_eq_true_2 (backup₁ = backup₁)) //.
       iFrame "∗ #".
       rewrite (bool_decide_eq_true_2 (expected = expected)) //. }
-    iMod ("Hcl" with "[-Hlexp Hldes Hdst Hγₜ]") as "_".
+    iMod ("Hcl" with "[-Hlexp Hldes Hdst Hγₜ Hp]") as "_".
     { iExists ver₁, log₁, abstraction₁, expected, cache₁, γ_backup₁, γ_backup₁', backup₁, backup₁', index₁, validated₁, t₁.
       iFrame_fast "∗". }
     iModIntro.
@@ -3225,13 +3264,14 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
     iIntros "S'".
     wp_pure credit:"Hcredit".
     wp_pures.
-    wp_bind (CmpXchg _ _ _)%E.
+    wp_bind (Resolve (CmpXchg _ _ _) _ _)%E.
     iInv readN as "(%ver₂ & %log₂ & %abstraction₂ & %actual₂ & %cache₂ & %γ_backup₂ & %γ_backup₂' & %backup₂ & %backup₂' & %index₂ & %validated₂ & %t₂ & >Hver & >Hbackup & >Hγ & Hbackup_managed₂ & Hlog & >●Hhist & >●Hγᵢ & >●Hγᵥ & >Hcache & Hlock & >●Hγ_val & >%Hsizes₂ & >%Hidx_wf₂ & >%Hbackup_wf₂ & >%Hvalid_wf₂)" "Hcl".
     pose proof Hsizes₂ as [Hunboxed₂ Hlenactual₂ Hlencache₂ Hloglen₂].
     pose proof Hidx_wf₂ as [Hindex₂ Hlenᵢ₂ Hnodup₂ Hrange₂].
     pose proof Hbackup_wf₂ as [Hlogged₂ Habs_backup₂ Habs_backup'₂ Hdom_eq₂].
     pose proof Hvalid_wf₂ as [Htag₂ Hcons₂ Hvalidated_iff₂ Hvalidated_sub₂].
     iInv mainN as "(%ver₂' & %log₂' & %abstraction₂' & %actual₂' & %γ_backup₂'' & %backup₂'' & %requests₂ & %vers₂ & %index₂' & %order₂ & %idx₂ & %t₂' & >●Hγᵥ' & >Hbackup' & >Hγ' & >●Hhist' & >●Hγᵣ & Hreginv & >●Hγ_vers & >●Hγᵢ' & >●Hγₒ & >%Hmain_backup₂ & >%Hmain_vers₂ & >%Hmain_order₂)" "Hcl'".
+    iApply (wp_resolve with "Hp"); first done.
     pose proof Hmain_backup₂ as [Hlog₂ Habs₂].
     pose proof Hmain_vers₂ as [Hdomvers₂ Hvers₂].
     pose proof Hmain_order₂ as [Hdomord₂ Hinj₂ Hidx₂ Hmono₂ Hubord₂].
@@ -3253,6 +3293,9 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       rewrite dfrac_op_own Qp.half_half.
       iMod token_alloc as "[%γ_new_backup Hγ_new_backup]".
       wp_cmpxchg_suc.
+      iIntros "!>" (pvs1 Hpvs1) "Hp".
+      assert (cas_succ_res pvs) as Hsucc.
+      { rewrite Hpvs1. eexists [], _, _, _. split; [constructor | done]. }
       iMod (execute_lp backup₁ backup₂' ldes' γ_backup₁ γ_backup₂ γ_backup₂' γ_new_backup l lexp ldes expected desired _ actual₂ abstraction₂ log₂ requests₂ vers₂ order₂ index₂ validated₂ with "Hreadinv Hinv Hcasinv ◯Hγᵣ ◯Hγ_abs ◯Hγₕ₁ Hd Hd_domain [Hbackup_managed₂] [$S'] Hγₜ Hγ_new_backup Hldes' †Hldes' Hver Hlog ●Hγᵥ [Hcache] [Hlock] [Hcl] ●Hγᵥ' ●Hγᵣ [Hreginv] ●Hγ_vers ●Hγᵢ' ●Hγₒ [Hcl'] [$●Hγᵢ] ●Hγ_val [Hγ Hγ'] Hbackup [●Hhist ●Hhist']") as "(-> & -> & %Hnew_backup_fresh & HΦ & #◯Hγ_vers₂ & #◯Hγ_abs₂ & #◯Hγₕ₂ & #◯Hγₒ & S & S' & Hmanaged)"; try done.
       { by destruct (Nat.even ver₂). }
       { rewrite Hlen_exp //. }
@@ -3295,6 +3338,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iIntros "_".
       wp_pures.
       iModIntro.
+      iApply (cas_post_true with "Hp").
       iApply ("HΦ" with "[$]").
     - iPoseProof (history_abs_frag_agree with "●Hhist ◯Hγ_abs") as "%Hagreeabs₂".
       destruct (decide (backup₂ = backup₁)) as [-> | Hne₂]; first last.
@@ -3303,6 +3347,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
         { done. }
         simpl.
         wp_cmpxchg_fail.
+        iIntros "!>" (pvs1 Hpvs1) "Hp".
         iMod (already_linearized with "Hcasinv Hlexp Hldes ◯Hγᵣ Hreq Hγₜ Hcredit") as "(HΦ & S & Hreqinv)".
         { done. }
         { done. }
@@ -3310,7 +3355,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
         iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
         { iFrame_fast_pure. }
         iModIntro.
-        iMod ("Hcl" with "[-Hdst Hldes' †Hldes' S S' HΦ]") as "_".
+        iMod ("Hcl" with "[-Hdst Hldes' †Hldes' S S' HΦ Hp]") as "_".
         { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₂, backup₂', index₂, validated₂, t₂. iFrame_fast "∗". }
         iModIntro.
         wp_pures.
@@ -3329,7 +3374,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
         { rewrite Hlen_des //. }
         iIntros "_".
         wp_pures.
-        by iModIntro. }
+        iModIntro. iApply (cas_post_false _ _ _ _ [((_, #false)%V, #())] with "Hp HΦ"); [by rewrite Hpvs1 | solve_failed_res]. }
       destruct (decide (t₁ = 0)) as [-> | Hne₁].
       { (* First backup was validated *)
         (* It cannot be the case that the unmarked pointers are equal, as this would imply that it became unvalidated *)
@@ -3354,6 +3399,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       { naive_solver. }
       clear Hne₁ Hinvalid₂.
       wp_cmpxchg_fail.
+      iIntros "!>" (pvs1 Hpvs1) "Hp".
       iInv casN as "[[S H] | [>Hlintok _]]" "Hclose"; first last.
       { iCombine "Hγₜ Hlintok" gives %[]. }
       iMod (lc_fupd_elim_later with "Hcredit S") as "S".
@@ -3362,20 +3408,21 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       { iLeft. iFrame. }
       iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
       { iFrame_fast_pure. }
-      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hldes' †Hldes' S' Hγₜ]") as "_".
+      iMod ("Hcl" with "[-Hdst Hlexp Hldes Hldes' †Hldes' S' Hγₜ Hp]") as "_".
       { iExists ver₂, log₂, abstraction₂, actual₂, cache₂, γ_backup₂, γ_backup₂', backup₁, backup₂', index₂, validated₂, 0. iFrame_fast "∗". }
       iApply fupd_mask_intro.
       { set_solver. }
       iIntros ">_ !>".
       wp_pure credit:"Hcredit".
       wp_pures.
-      wp_bind (CmpXchg _ _ _)%E.
+      wp_bind (Resolve (CmpXchg _ _ _) _ _)%E.
       iInv readN as "(%ver₃ & %log₃ & %abstraction₃ & %actual₃ & %cache₃ & %γ_backup₃ & %γ_backup₃' & %backup₃ & %backup₃' & %index₃ & %validated₃ & %t₃ & >Hver & >Hbackup & >Hγ & Hbackup_managed & Hlog & >●Hhist & >●Hγᵢ & >●Hγᵥ & >Hcache & Hlock & >●Hγ_val & >%Hsizes₃ & >%Hidx_wf₃ & >%Hbackup_wf₃ & >%Hvalid_wf₃)" "Hcl".
       pose proof Hsizes₃ as [Hunboxed₃ Hlenactual₃ Hlencache₃ Hloglen₃].
       pose proof Hidx_wf₃ as [Hindex₃ Hlenᵢ₃ Hnodup₃ Hrange₃].
       pose proof Hbackup_wf₃ as [Hlogged₃ Habs_backup₃ Habs_backup'₃ Hdom_eq₃].
       pose proof Hvalid_wf₃ as [Htag₃ Hcons₃ Hvalidated_iff₃ Hvalidated_sub₃].
       iInv mainN as "(%ver₃' & %log₃' & %abstraction₃' & %actual₃' & %γ_backup₃'' & %backup₃'' & %requests₃ & %vers₃ & %index₃' & %order₃ & %idx₃ & %t₃' & >●Hγᵥ' & >Hbackup' & >Hγ' & >●Hhist' & >●Hγᵣ & Hreginv & >●Hγ_vers & >●Hγᵢ' & >●Hγₒ & >%Hmain_backup₃ & >%Hmain_vers₃ & >%Hmain_order₃)" "Hcl'".
+      iApply (wp_resolve with "Hp"); first done.
       pose proof Hmain_backup₃ as [Hlog₃ Habs₃].
       pose proof Hmain_vers₃ as [Hdomvers₃ Hvers₃].
       pose proof Hmain_order₃ as [Hdomord₃ Hinj₃ Hidx₃ Hmono₃ Hubord₃].
@@ -3397,6 +3444,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
         { done. }
         simpl.
         wp_cmpxchg_fail.
+        iIntros "!>" (pvs2 Hpvs2) "Hp".
         iMod (already_linearized with "Hcasinv Hlexp Hldes ◯Hγᵣ Hreq Hγₜ Hcredit") as "(HΦ & S & Hreqinv)".
         { done. }
         { done. }
@@ -3404,7 +3452,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
         iMod ("Hcl'" with "[$●Hγᵥ' $Hbackup' $Hγ' $●Hhist' $●Hγᵣ $Hreginv $●Hγ_vers $●Hγᵢ' $●Hγₒ]") as "_".
         { iFrame_fast_pure. }
         iModIntro.
-        iMod ("Hcl" with "[-Hdst Hldes' †Hldes' S S' HΦ]") as "_".
+        iMod ("Hcl" with "[-Hdst Hldes' †Hldes' S S' HΦ Hp]") as "_".
         { iExists ver₃, log₃, abstraction₃, actual₃, cache₃, γ_backup₃, γ_backup₃', backup₃, backup₃', index₃, validated₃, t₃. iFrame_fast "∗". }
         iModIntro.
         wp_pures.
@@ -3421,7 +3469,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
         { rewrite Hlen_des //. }
         iIntros "_".
         wp_pures.
-        by iModIntro. }
+        iModIntro. iApply (cas_post_false _ _ _ _ [((_, #false)%V, #()); ((_, #false)%V, #())] with "Hp HΦ"); [by rewrite Hpvs1 Hpvs2 | solve_failed_res]. }
       destruct (decide (t₃ = 1)) as [-> | Hne₃].
       { assert (γ_backup₃ ∉ validated₃) as Hinvalid₃ by naive_solver.
         iInv casN as "[[S H] | [>Hlintok _]]" "Hclose".
@@ -3437,6 +3485,9 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iMod token_alloc as "[%γ_new_backup Hγ_new_backup]".
       wp_cmpxchg_suc.
       { f_equal. }
+      iIntros "!>" (pvs2 Hpvs2) "Hp".
+      assert (cas_succ_res pvs) as Hsucc.
+      { rewrite Hpvs1 Hpvs2. eexists [((_, #false)%V, #())], _, _, _. split; [solve_failed_res | done]. }
       iMod (execute_lp backup₁ backup₃' ldes' γ_backup₂ γ_backup₃ γ_backup₃' γ_new_backup l lexp ldes expected desired _ actual₃ abstraction₃ log₃ requests₃ vers₃ order₃ index₃ validated₃ with "Hreadinv Hinv Hcasinv ◯Hγᵣ ◯Hγ_abs ◯Hγₕ₁ Hd Hd_domain [Hbackup_managed] [$S'] Hγₜ Hγ_new_backup Hldes' †Hldes' Hver Hlog ●Hγᵥ [Hcache] [Hlock] [Hcl] ●Hγᵥ' ●Hγᵣ [Hreginv] ●Hγ_vers ●Hγᵢ' ●Hγₒ [Hcl'] [$●Hγᵢ] ●Hγ_val [Hγ Hγ'] Hbackup [●Hhist ●Hhist']") as "(-> & -> & %Hnew_backup_fresh & HΦ & #◯Hγ_vers₃ & #◯Hγ_abs₃ & #◯Hγₕ₃ & #◯Hγₒ₃ & S & S' & Hmanaged)"; try done.
       { by destruct (Nat.even ver₃). }
       { destruct (decide (1 < size log₃)).
@@ -3478,6 +3529,7 @@ Lemma read'_spec_inv (actual₁ cache₁ copy desired : list val) (γ γᵥ γ�
       iIntros "_".
       wp_pures.
       iModIntro.
+      iApply (cas_post_true with "Hp").
       iApply ("HΦ" with "[$]").
   Qed.
 

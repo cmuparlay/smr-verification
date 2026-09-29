@@ -67,7 +67,7 @@ Section cached_wf.
       else #().
 
   Definition cached_wf_cas (n : nat) : val :=
-    λ: "l" "expected" "desired",
+    λ: "l" "expected" "desired" "p",
       let: "ver" := !("l" +ₗ #version_off) in
       let: "domain" := !("l" +ₗ #domain_off) in
       let: "shield" := hazptr.(shield_new) "domain" in
@@ -82,10 +82,11 @@ Section cached_wf.
           let: "backup'" := array_clone "desired" #n in
           let: "shield'" := hazptr.(shield_new) "domain" in
           hazptr.(shield_set) "shield'" "backup'";;
-          let: "res" := CmpXchg ("l" +ₗ #backup_off) "backup" ("backup'" `tag` #1) in
+          (* The compare-exchanges resolve the caller's prophecy [p] (ghost code). *)
+          let: "res" := Resolve (CmpXchg ("l" +ₗ #backup_off) "backup" ("backup'" `tag` #1)) "p" #() in
           if: Snd "res" || 
             ((Fst "res" = untag "backup")
-              && (CAS ("l" +ₗ #backup_off) (untag "backup") ("backup'" `tag` #1))) then
+              && Snd (Resolve (CmpXchg ("l" +ₗ #backup_off) (untag "backup") ("backup'" `tag` #1)) "p" #())) then
             hazptr.(hazard_domain_retire) "domain" (untag "backup") #n;;
             try_validate n "l" "ver" "desired" "backup'";;
             hazptr.(shield_drop) "shield";;
