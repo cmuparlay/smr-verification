@@ -1211,10 +1211,8 @@ Proof.
     iApply ("IH" with "Sh AU").
 Qed.
 
-(* Check shield_protect_tagged_spec'. *)
-
-Lemma shield_protect_tagged_spec :
-  shield_protect_tagged_spec' N shield_protect_tagged IsHazardDomain Managed Shield.
+Lemma shield_protect_tagged_opt_spec :
+  shield_protect_tagged_opt_spec' N shield_protect_tagged IsHazardDomain Managed Shield.
 Proof.
   intros ????????.
   iIntros "#IHD Sh" (Φ) "AU".
@@ -1225,25 +1223,45 @@ Proof.
   iModIntro. wp_let.
 
   iLöb as "IH" forall (p1 t1 s_st). wp_lam. wp_pures.
-  (* Reduce the [untag] argument so [shield_set_spec] matches its literal form. *)
-  wp_pures.
-  change #(Some (Loc.blk_to_loc p1) &ₜ 0) with #(oblk_to_lit (Some p1)).
+  change #((Loc.blk_to_loc <$> p1) &ₜ 0) with #(oblk_to_lit p1).
   wp_apply (shield_set_spec with "IHD [$Sh]") as "Sh"; [solve_ndisj..|].
   wp_seq.
 
   wp_bind (! _)%E. iMod "AU" as (p2 t2 γ size R) "[[a↦ p2↦] CloseAU]".
-  case (decide ((p1, t1) = (p2, t2))) as [Heq|NE]; [injection Heq as -> ->|]; wp_load.
+  case (decide ((p1, t1) = (p2, t2))) as [Heq|NE]; [injection Heq as -> ->; destruct p2 as [p2|]|]; wp_load.
   - iMod (shield_validate with "IHD p2↦ Sh") as "[p2↦ Sh]"; [solve_ndisj|].
     iDestruct "CloseAU" as "[_ Commit]".
     iMod ("Commit" with "[$a↦ $p2↦ $Sh]") as "HΦ".
     iModIntro. wp_pures.
     rewrite bool_decide_eq_true_2 //.
     wp_pures. iApply "HΦ".
+  - iDestruct "CloseAU" as "[_ Commit]".
+    iMod ("Commit" with "[$a↦ $Sh]") as "HΦ".
+    iModIntro. wp_pures.
+    rewrite bool_decide_eq_true_2 //.
+    wp_pures. iApply "HΦ".
   - iDestruct "CloseAU" as "[Abort _]".
     iMod ("Abort" with "[$a↦ $p2↦]") as "AU".
     iModIntro. wp_pures. rewrite bool_decide_eq_false_2; last first.
-    { naive_solver. }
+    { intros [= Hp Ht]. apply NE. f_equal; last lia.
+      by apply (inj (fmap Loc.blk_to_loc)) in Hp. }
     wp_pures. iApply ("IH" with "Sh AU").
+Qed.
+
+(* The non-null case of [shield_protect_tagged_opt_spec]. *)
+Lemma shield_protect_tagged_spec :
+  shield_protect_tagged_spec' N shield_protect_tagged IsHazardDomain Managed Shield.
+Proof.
+  intros E γd d s s_st a dq ?.
+  iIntros "#IHD Sh" (Φ) "AU".
+  awp_apply (shield_protect_tagged_opt_spec with "IHD Sh"); first done.
+  iApply (aacc_aupd_commit with "AU"); first done.
+  iIntros (p t γ_p size_i R) "[a↦ M]".
+  rewrite /atomic_acc /=. iModIntro.
+  iExists (Some p), t, γ_p, size_i, R. iFrame "a↦ M".
+  iSplit.
+  { iIntros "[$ $] !>". auto. }
+  iIntros "($ & $ & $) !>". auto.
 Qed.
 
 Lemma shield_acc :

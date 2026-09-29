@@ -19,6 +19,10 @@ From iris.prelude Require Import options.
     header against it without knowing which big atomic it came from, so SC is
     only specified for the big atomic of the thread's last LL.
 
+    A successful SC unlinks the thread, so it leaves no link: in Cached-ME,
+    it may drop the protection of the backup that [expected_tag] points to,
+    so an SC that follows it without an LL would read a freed backup.
+
     LL returns a fresh buffer with the value, together with the permission to
     free it and the fact that the value has the size [n] of the big atomic. *)
 
@@ -84,7 +88,8 @@ Definition big_atomic_llsc_sc_spec' : Prop :=
             else
               BigAtomic γ actual ver'
           | RET #(bool_decide (ver' = ver));
-              LLSCThread γd ctx (Some (γ, ver)) ∗ l_desired ↦∗{dq} desired }>>.
+              LLSCThread γd ctx (if bool_decide (ver' = ver) then None else Some (γ, ver)) ∗
+              l_desired ↦∗{dq} desired }>>.
 
 End spec.
 

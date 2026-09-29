@@ -76,6 +76,7 @@ Definition hazard_pointer_impl Σ `{!heapGS Σ, !hazptrG Σ}
   spec_hazptr.shield_validate := shield_validate hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_protect_spec := shield_protect_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_protect_tagged_spec := shield_protect_tagged_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
+  spec_hazptr.shield_protect_tagged_opt_spec := shield_protect_tagged_opt_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_unset_spec := shield_unset_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_drop_spec := shield_drop_spec hazptrN (slot_bag_impl Σ) (retired_list_impl Σ);
   spec_hazptr.shield_acc := shield_acc hazptrN (slot_bag_impl Σ);

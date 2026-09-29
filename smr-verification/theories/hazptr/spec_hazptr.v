@@ -122,6 +122,26 @@ Definition shield_protect_tagged_spec' : Prop :=
       Shield γd s (Validated p γ_p R size_i) |
       RET #(Some (Loc.blk_to_loc p) &ₜ t) }>>.
 
+(* Like [shield_protect_tagged_spec'], but the tagged pointer may be null, in
+   which case the shield is deactivated. *)
+Definition shield_protect_tagged_opt_spec' : Prop :=
+  ∀ E γd d s s_st (a : loc) dq,
+  ↑(mgmtN N) ⊆ E →
+  IsHazardDomain γd d -∗
+  Shield γd s s_st -∗
+  <<{ ∀∀ (pa : option blk) (t : nat) γ_p size_i R,
+      a ↦{dq} #((Loc.blk_to_loc <$> pa) &ₜ t) ∗
+      if pa is Some p then
+        ▷ Managed γd p γ_p size_i R
+      else True }>>
+    shield_protect_tagged #s #a @ E,∅,↑(mgmtN N)
+  <<{ a ↦{dq} #((Loc.blk_to_loc <$> pa) &ₜ t) ∗
+      if pa is Some p then
+        Managed γd p γ_p size_i R ∗ Shield γd s (Validated p γ_p R size_i)
+      else
+        Shield γd s Deactivated |
+      RET #((Loc.blk_to_loc <$> pa) &ₜ t) }>>.
+
 (* Access the protected pointer. *)
 Definition shield_acc' : Prop :=
   ∀ E γd R s p γ_p size_i,
@@ -210,6 +230,7 @@ Record hazard_pointer_spec {Σ} `{!heapGS Σ} {N : namespace} : Type := HazardPo
   shield_validate : shield_validate' N IsHazardDomain Managed Shield;
   shield_protect_spec : shield_protect_spec' N hazard_pointer_spec_code.(shield_protect) IsHazardDomain Managed Shield;
   shield_protect_tagged_spec : shield_protect_tagged_spec' N hazard_pointer_spec_code.(shield_protect_tagged) IsHazardDomain Managed Shield;
+  shield_protect_tagged_opt_spec : shield_protect_tagged_opt_spec' N hazard_pointer_spec_code.(shield_protect_tagged) IsHazardDomain Managed Shield;
   shield_unset_spec : shield_unset_spec' N hazard_pointer_spec_code.(shield_unset) IsHazardDomain Shield;
   shield_drop_spec : shield_drop_spec' N hazard_pointer_spec_code.(shield_drop) IsHazardDomain Shield;
   shield_acc : shield_acc' N Shield;

@@ -815,16 +815,16 @@ Section cached_wf_llsc.
   Qed.
 
   (** The atomic update of SC *)
-  Definition AU_sc (γ : gname) (ver : nat) (desired : list val) (Q : iProp) (Φ : val → iProp) : iProp :=
+  Definition AU_sc (γ : gname) (ver : nat) (desired : list val) (Q : bool → iProp) (Φ : val → iProp) : iProp :=
     AU <{ ∃∃ actual ver', CachedWFLLSC γ actual ver' }>
        @ ⊤ ∖ (↑cached_wf_llscN ∪ ↑ptrsN hazptrN), ↑mgmtN hazptrN
        <{ if bool_decide (ver' = ver) then CachedWFLLSC γ desired (S ver') else CachedWFLLSC γ actual ver',
-          COMM Q -∗ Φ #(bool_decide (ver' = ver)) }>.
+          COMM Q (bool_decide (ver' = ver)) -∗ Φ #(bool_decide (ver' = ver)) }>.
 
   (** A successful installation of the backup [ptr] by an SC that linked version
       [ver] (protected by [h1]). This is the linearization point of the SC. *)
   Lemma sc_commit_success γs γd l n (d : loc) (sq t : nat) hist ec c lk validated unlocks
-      (ptr : blk) γ_new desired ver e sz (h1 h2 : loc) Q Φ :
+      (ptr : blk) γ_new desired ver e sz (h1 h2 : loc) (Q : bool → iProp) Φ :
     llsc_wf n sq t hist ec c validated unlocks →
     length desired = n →
     ec.(e_blk) = e.(e_blk) →
@@ -853,7 +853,7 @@ Section cached_wf_llsc.
       hazptr.(Managed) γd e.(e_blk) e.(e_name) n (node e.(e_val)) ∗
       hazptr.(Shield) γd h2 (Validated ptr γ_new (node desired) n) ∗
       mono_list_idx_own γs.(γ_hist) (S ver) (Entry γ_new ptr desired (sq + 2)) ∗
-      (Q -∗ Φ #true).
+      (Q true -∗ Φ #true).
   Proof using DISJN.
     iIntros (Hwf Hlen Hblk) "#Hdom #Hidx S1 S2 Htok Hptr †ptr AU Hseq Hbk Habs Hman Hhist Htoks Hsq
       Hcache Hlk Hif Hval Hunl Hcl".
@@ -898,11 +898,11 @@ Section cached_wf_llsc.
   Qed.
 
   (** A failing SC, when the version has changed since its LL. *)
-  Lemma sc_commit_fail γs ver desired Q Φ (vs : list val) (cur : nat) :
+  Lemma sc_commit_fail γs ver desired (Q : bool → iProp) Φ (vs : list val) (cur : nat) :
     cur ≠ ver →
     γs.(γ_abs) ↪VAR{#1/2} (vs, cur) -∗
     AU_sc (encode γs) ver desired Q Φ ={⊤ ∖ ↑cached_wf_llscN}=∗
-    γs.(γ_abs) ↪VAR{#1/2} (vs, cur) ∗ (Q -∗ Φ #false).
+    γs.(γ_abs) ↪VAR{#1/2} (vs, cur) ∗ (Q false -∗ Φ #false).
   Proof using DISJN.
     iIntros (Hne) "Habs AU".
     iMod "AU" as (actual ver') "[(%γs' & %Henc & Hba) [_ Hcommit]]".
@@ -914,7 +914,7 @@ Section cached_wf_llsc.
   Qed.
 
   Lemma wp_try_install γs γd l n (d c h1 h2 d' : loc) (et : val) (st2 : shield_state Σ) (tp seq ver sz : nat)
-      (e : entry) (l_desired : loc) (dq : dfrac) (desired : list val) (Q : iProp) (Φ : val → iProp) :
+      (e : entry) (l_desired : loc) (dq : dfrac) (desired : list val) (Q : bool → iProp) (Φ : val → iProp) :
     length desired = n → 0 < n →
     inv cached_wf_llscN (llsc_inv γs γd l n) -∗
     (l +ₗ domain_off) ↦□ #d -∗
@@ -928,9 +928,9 @@ Section cached_wf_llsc.
     hazptr.(Shield) γd h2 st2 -∗
     l_desired ↦∗{dq} desired -∗
     AU_sc (encode γs) ver desired Q Φ -∗
-    (∀ st2', c ↦∗ [ #h1; #h2; et ] -∗
+    (∀ st2' b, c ↦∗ [ #h1; #h2; et ] -∗
        hazptr.(Shield) γd h1 (Validated e.(e_blk) e.(e_name) (node e.(e_val)) sz) -∗
-       hazptr.(Shield) γd h2 st2' -∗ l_desired ↦∗{dq} desired -∗ Q) -∗
+       hazptr.(Shield) γd h2 st2' -∗ l_desired ↦∗{dq} desired -∗ Q b) -∗
     WP try_install hazptr n #l #c #(Some (Loc.blk_to_loc e.(e_blk)) &ₜ tp) #seq #l_desired {{ Φ }}.
   Proof using DISJN.
     iIntros (Hlen Hpos) "#Hinv #Hdomloc #Hdom #Hdom' #Hidx #Htp #Hlb Hc S1 S2 Hdes AU HQ".
@@ -1294,17 +1294,23 @@ Section cached_wf_llsc.
     iIntros (Φ) "AU".
     iDestruct "Hlink" as (γs' e) "(%Henc & #Hidx & #Hcase)".
     apply (inj encode) in Henc as <-.
+    iAssert (AU_sc (encode γs) ver desired
+               (λ b, CachedWFLLSCThread γd #c (if b then None else Some (encode γs, ver)) ∗
+                     l_desired ↦∗{dq} desired)%I Φ) with "[AU]" as "AU".
+    { rewrite /AU_sc /=. iExact "AU". }
     (* How to rebuild the thread-local state at the end *)
-    iAssert (∀ st1' st2', c ↦∗ [ #h1; #h2; et ] -∗ hazptr.(Shield) γd h1 st1' -∗
+    iAssert (∀ st1' st2' (b : bool), c ↦∗ [ #h1; #h2; et ] -∗ hazptr.(Shield) γd h1 st1' -∗
                hazptr.(Shield) γd h2 st2' -∗ l_desired ↦∗{dq} desired -∗
                ⌜∀ tp sz, et = #(Some (Loc.blk_to_loc e.(e_blk)) &ₜ tp) →
                   st1 = Validated e.(e_blk) e.(e_name) (node e.(e_val)) sz →
                   st1' = st1⌝ -∗
-               CachedWFLLSCThread γd #c (Some (encode γs, ver)) ∗ l_desired ↦∗{dq} desired)%I
+               CachedWFLLSCThread γd #c (if b then None else Some (encode γs, ver)) ∗
+               l_desired ↦∗{dq} desired)%I
       with "[†c]" as "HQ".
-    { iIntros (st1' st2') "Hc S1 S2 Hdes %Hst1". iFrame "Hdes".
+    { iIntros (st1' st2' b) "Hc S1 S2 Hdes %Hst1". iFrame "Hdes".
       iExists c, h1, h2, d', et, st1', st2'. iFrame "∗ #". iSplit; first done.
-      iSplit; first done.
+      destruct b; first done.
+      iExists γs, e. iFrame "Hidx". iSplit; first done.
       iDestruct "Hcase" as "[Hcase|(%tp & %sz & %Het & %Hst & Htp)]"; first by iLeft.
       iRight. iExists tp, sz. rewrite (Hst1 tp sz Het Hst). by iFrame "Htp". }
     wp_lam. wp_pures.
@@ -1322,8 +1328,8 @@ Section cached_wf_llsc.
       { iExists sq, t, hist, ec, cc, lk, validated, unlocks. by iFrame. }
       iModIntro.
       wp_apply (wp_try_install with "Hinv Hdomloc Hdom Hdom' Hidx Htp Hlb Hc S1 S2 Hdes AU"); [done..|].
-      iIntros (st2') "Hc S1 S2 Hdes".
-      iApply ("HQ" with "Hc S1 S2 Hdes"). iPureIntro. naive_solver. }
+      iIntros (st2' b) "Hc S1 S2 Hdes".
+      iApply ("HQ" $! _ _ b with "Hc S1 S2 Hdes"). iPureIntro. naive_solver. }
     (* Fast path: [expected_tag] is the sequence number of version [ver] *)
     rewrite /is_seqnum. wp_pures.
     wp_apply (wp_load_offset _ _ _ _ 0 with "Hc") as "Hc"; first done.
@@ -1378,8 +1384,8 @@ Section cached_wf_llsc.
       wp_apply (wp_try_install _ _ _ _ _ _ _ _ _ _ _ 0 _ _ n
         with "Hinv Hdomloc Hdom Hdom' Hidx [] Hlb2 Hc S1 S2 Hdes AU"); [done|done| |].
       { iRight. by iFrame "Hvver". }
-      iIntros (st2') "Hc S1 S2 Hdes".
-      iApply ("HQ" with "Hc S1 S2 Hdes"). iPureIntro. intros ?? [=]. 
+      iIntros (st2' b) "Hc S1 S2 Hdes".
+      iApply ("HQ" $! _ _ b with "Hc S1 S2 Hdes"). iPureIntro. intros ?? [=]. 
     - (* The check fails: the version has changed *)
       iAssert ⌜length hist2 - 1 ≠ ver⌝%I as %Hchanged.
       { iIntros (Heq).
@@ -1402,10 +1408,10 @@ Section cached_wf_llsc.
         rewrite bool_decide_eq_false_2; last first.
         { intros Heq. apply Hfail. split; [reflexivity|lia]. }
         wp_pures. iApply "HΦ".
-        iApply ("HQ" with "Hc S1 S2 Hdes"). iPureIntro. intros ?? [=].
+        iApply ("HQ" $! _ _ false with "Hc S1 S2 Hdes"). iPureIntro. intros ?? [=].
       + rewrite bool_decide_eq_false_2; last (intros [=]; lia).
         wp_pures. iApply "HΦ".
-        iApply ("HQ" with "Hc S1 S2 Hdes"). iPureIntro. intros ?? [=].
+        iApply ("HQ" $! _ _ false with "Hc S1 S2 Hdes"). iPureIntro. intros ?? [=].
   Qed.
 
   Definition cached_wf_llsc_code : big_atomic_llsc_code := {|
