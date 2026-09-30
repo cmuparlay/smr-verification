@@ -27,7 +27,8 @@ From smr Require Import hazptr.proof_cached_wf_llsc.
       otherwise it frees its own backup. Either way the SC returns [n]
       credits.
     - An LL costs [n], the buffer it returns.
-    - The thread-local state is four words and a retirer. *)
+    - The thread-local state is four words; its retirer comes from the
+      domain's pool, and goes back to it when the thread ends. *)
 
 Local Existing Instances cached_wf_llsc_absG cached_wf_llsc_histG cached_wf_llsc_seqG
   cached_wf_llsc_valG cached_wf_llsc_unlG cached_wf_llsc_lkG cached_wf_llsc_tokenG.
@@ -678,7 +679,7 @@ Section cached_wf_llsc_sp.
   (** The costs *)
   Definition cwf_new_cost (n : nat) : nat := S (S n) + n.
   Definition cwf_sc_cost (n : nat) : nat := n.
-  Definition cwf_thread_cost : nat := 4 + hazptr.(hp_retirer_cost).
+  Definition cwf_thread_cost : nat := 4.
   Definition cwf_thread_refund : nat := 4.
 
   Lemma cached_wf_llsc_new_spec :
@@ -745,7 +746,7 @@ Section cached_wf_llsc_sp.
     big_atomic_llsc_sp_thread_new_spec' cached_wf_llscN hazptrN (llsc_thread_new_sp hazptr) hazptr
       cwf_thread_cost CachedWFLLSCThread.
   Proof.
-    iIntros (γd d Φ) "[#Hdom [Hc4 Hcr]] HΦ".
+    iIntros (γd d Φ) "[#Hdom Hc4] HΦ".
     wp_lam.
     wp_apply (wp_allocN_cred _ _ _ 4 with "[Hc4]") as (c) "[†c Hc]"; first lia.
     { done. }
@@ -756,7 +757,7 @@ Section cached_wf_llsc_sp.
     wp_pures. rewrite Loc.add_0. wp_store. wp_pures.
     wp_apply (hazptr.(shield_new_sp_spec) with "Hdom [//]") as (s2) "S2"; first solve_ndisj.
     wp_pures. wp_store. wp_pures. rewrite !Loc.add_assoc /=. wp_store. wp_pures.
-    wp_apply (hazptr.(hazard_retirer_new_spec) with "Hdom Hcr") as (r) "Hret"; first solve_ndisj.
+    wp_apply (hazptr.(hazard_retirer_new_spec) with "Hdom [//]") as (r) "Hret"; first solve_ndisj.
     wp_pures. wp_store.
     iModIntro. iApply "HΦ".
     iExists c, s1, s2, d, r, _, _, _. iFrame "∗ #". iSplit; first done.
@@ -768,13 +769,16 @@ Section cached_wf_llsc_sp.
       cwf_thread_refund CachedWFLLSCThread.
   Proof.
     iIntros (γd ctx link Φ)
-      "(%c & %h1 & %h2 & %d & %r & %et & %st1 & %st2 & -> & Hc & †c & #Hdom & S1 & S2 & _) HΦ".
+      "(%c & %h1 & %h2 & %d & %r & %et & %st1 & %st2 & -> & Hc & †c & #Hdom & S1 & S2 & Hret & _) HΦ".
     wp_lam. wp_pures.
     wp_apply (wp_load_offset _ _ _ _ 0 with "Hc") as "Hc"; first done.
     wp_apply (hazptr.(shield_drop_sp_spec) with "Hdom S1") as "_"; first solve_ndisj.
     wp_pures.
     wp_apply (wp_load_offset _ _ _ _ 1 with "Hc") as "Hc"; first done.
     wp_apply (hazptr.(shield_drop_sp_spec) with "Hdom S2") as "_"; first solve_ndisj.
+    wp_pures.
+    wp_apply (wp_load_offset _ _ _ _ 3 with "Hc") as "Hc"; first done.
+    wp_apply (hazptr.(hazard_retirer_release_spec) with "Hret") as "_"; first solve_ndisj.
     wp_pures.
     wp_apply (wp_free_cred with "[$Hc $†c]") as "Hc"; first done.
     by iApply "HΦ".

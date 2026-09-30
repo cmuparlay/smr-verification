@@ -16,13 +16,15 @@ From smr Require Import helpers.
       [hp_domain_cost] space credits. Shields take slots of the domain, so they
       cost nothing.
     - Retiring goes through a [Retirer], a thread-local handle that holds the
-      retired blocks that have not been freed yet. Creating a retirer costs
-      [hp_retirer_cost] credits, which pay for the handle and for all the
-      blocks it will ever hold, so [hazard_retire] gives back the credits of
-      the retired block at once: from the client's point of view, a retired
-      block is freed. Blocks of at most [hp_kmax] cells can be retired.
-
-    Retirers cannot be dropped, so the space they hold stays paid for. *)
+      retired blocks that have not been freed yet. The domain has a fixed pool
+      of retirers, paid for with the domain: [hazard_retirer_new] takes one
+      (and waits until one is free if there is none), and
+      [hazard_retirer_release] gives it back to the pool, together with the
+      blocks it still holds, which the next owner will free. A retirer's
+      space covers all the blocks it can hold, so [hazard_retire] gives back
+      the credits of the retired block at once: from the client's point of
+      view, a retired block is freed. Blocks of at most [hp_kmax] cells can
+      be retired. *)
 
 Definition RetirerT Σ (N : namespace) : Type :=
   ∀ (γd : gname) (t : loc), iProp Σ.
@@ -32,6 +34,7 @@ Context {Σ} `{!heapGS_gen HasLc hsp Σ} (N : namespace).
 Variables
   (hazard_domain_new : val)
   (hazard_retirer_new : val)
+  (hazard_retirer_release : val)
   (hazard_retire : val)
   (shield_new : val)
   (shield_set : val)
@@ -39,7 +42,7 @@ Variables
   (shield_drop : val)
   (shield_protect_tagged : val).
 Variables
-  (hp_kmax hp_domain_cost hp_retirer_cost : nat)
+  (hp_kmax hp_domain_cost : nat)
   (IsHazardDomain : DomainT Σ N)
   (Managed : ManagedT Σ N)
   (Shield : ShieldT Σ N)
@@ -142,9 +145,16 @@ Definition hazard_retirer_new_spec' : Prop :=
   ∀ E γd d,
   ↑(mgmtN N) ⊆ E →
   IsHazardDomain γd d -∗
-  {{{ ♢ hp_retirer_cost }}}
+  {{{ True }}}
     hazard_retirer_new #d @ E
   {{{ t, RET #t; Retirer γd t }}}.
+
+Definition hazard_retirer_release_spec' : Prop :=
+  ∀ E γd t,
+  ↑(mgmtN N) ⊆ E →
+  {{{ Retirer γd t }}}
+    hazard_retirer_release #t @ E
+  {{{ RET #(); True }}}.
 
 (* Detach a registered block; its space is given back at once. *)
 Definition hazard_retire_spec' : Prop :=
@@ -160,6 +170,7 @@ End spec.
 Record hazard_pointer_sp_code : Type := HazardPointerSpCode {
   hpsp_domain_new : val;
   hpsp_retirer_new : val;
+  hpsp_retirer_release : val;
   hpsp_retire : val;
   hpsp_shield_new : val;
   hpsp_shield_set : val;
@@ -174,7 +185,6 @@ Record hazard_pointer_sp_spec {Σ} `{!heapGS_gen HasLc hsp Σ} {N : namespace} :
 
   hp_kmax : nat;
   hp_domain_cost : nat;
-  hp_retirer_cost : nat;
 
   IsHazardDomainSp : DomainT Σ N;
   ManagedSp : ManagedT Σ N;
@@ -205,7 +215,9 @@ Record hazard_pointer_sp_spec {Σ} `{!heapGS_gen HasLc hsp Σ} {N : namespace} :
   shield_managed_agree_sp : shield_managed_agree_sp' N ManagedSp ShieldSp;
   hazard_retirer_new_spec :
     hazard_retirer_new_spec' N hazard_pointer_sp_spec_code.(hpsp_retirer_new)
-      hp_retirer_cost IsHazardDomainSp Retirer;
+      IsHazardDomainSp Retirer;
+  hazard_retirer_release_spec :
+    hazard_retirer_release_spec' N hazard_pointer_sp_spec_code.(hpsp_retirer_release) Retirer;
   hazard_retire_spec :
     hazard_retire_spec' N hazard_pointer_sp_spec_code.(hpsp_retire) hp_kmax ManagedSp Retirer;
 }.

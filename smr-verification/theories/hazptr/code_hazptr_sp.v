@@ -12,14 +12,19 @@ From smr Require Import hazptr.spec_hazptr_sp.
       word: [#()] when it is free, and otherwise the pointer it protects, or
       [#NULL]. A shield is (the address of) a slot; [shield_new] takes a free
       one, and waits until one is free if there is none.
-    - Every thread retires through its own retirer: its domain, the number [c]
-      of blocks it holds, an array of [R] entries (pointer and size), and an
+    - Every thread retires through a retirer: its domain, the number [c] of
+      blocks it holds, an array of [R] entries (pointer and size), and an
       array of [H] words for a snapshot of the slots. When [c] reaches [R], the
       retirer scans: it copies the slots into the snapshot, frees the blocks
       that are not in it, and keeps the others. There are at most [H] of those,
       so if [H < R] a retirer never holds more than [R] blocks.
+    - The domain owns a pool of [P] retirers, in the [P] words after its slots:
+      a word is a free retirer, or [#NULL] if a thread holds it. A thread takes
+      a retirer when it starts ([hazard_retirer_new], which waits until one is
+      free), and gives it back with the blocks it still holds when it ends
+      ([hazard_retirer_release]); the next owner frees them.
 
-    Nothing is allocated after the domain and the retirers are created. *)
+    Nothing is allocated after the domain is created. *)
 
 (** Layout of a retirer *)
 Notation rtDomain := 0 (only parsing).
@@ -27,13 +32,26 @@ Notation rtCount := 1 (only parsing).
 Notation rtEntries := 2 (only parsing).
 
 Section code.
-  Variables (H R : nat).
+  Variables (H R P : nat).
 
   Definition hp_snap_off : nat := 2 + 2 * R.
   Definition hp_retirer_size : nat := 2 + 2 * R + H.
 
+  (** Allocate the pool of retirers. *)
+  Definition hp_pool_init : val :=
+    rec: "loop" "d" "i" :=
+      if: "i" = #P then #()
+      else
+        let: "t" := AllocN #hp_retirer_size #0 in
+        "t" +ₗ #rtDomain <- "d";;
+        "d" +ₗ (#H + "i") <- "t";;
+        "loop" "d" ("i" + #1).
+
   Definition hazard_domain_new_sp : val :=
-    λ: <>, AllocN #H #().
+    λ: <>,
+      let: "d" := AllocN #(H + P) #() in
+      hp_pool_init "d" #0;;
+      "d".
 
   Definition shield_new_loop_sp : val :=
     rec: "loop" "d" "i" :=
@@ -63,11 +81,25 @@ Section code.
   Definition shield_protect_tagged_sp : val :=
     λ: "s" "a", shield_protect_tagged_loop_sp "s" "a" !"a".
 
+  Definition hazard_retirer_new_loop : val :=
+    rec: "loop" "d" "i" :=
+      if: "i" = #P then "loop" "d" #0
+      else
+        let: "t" := !("d" +ₗ (#H + "i")) in
+        if: ("t" ≠ #NULL) && CAS ("d" +ₗ (#H + "i")) "t" #NULL then "t"
+        else "loop" "d" ("i" + #1).
+
   Definition hazard_retirer_new_sp : val :=
-    λ: "d",
-      let: "t" := AllocN #hp_retirer_size #0 in
-      "t" +ₗ #rtDomain <- "d";;
-      "t".
+    λ: "d", hazard_retirer_new_loop "d" #0.
+
+  Definition hazard_retirer_release_loop : val :=
+    rec: "loop" "d" "t" "i" :=
+      if: "i" = #P then "loop" "d" "t" #0
+      else if: CAS ("d" +ₗ (#H + "i")) #NULL "t" then #()
+      else "loop" "d" "t" ("i" + #1).
+
+  Definition hazard_retirer_release_sp : val :=
+    λ: "t", hazard_retirer_release_loop !("t" +ₗ #rtDomain) "t" #0.
 
   (** Copy the slots into the snapshot. *)
   Definition hp_snapshot_loop : val :=
@@ -115,9 +147,10 @@ Section code.
 
 End code.
 
-Definition hazptr_sp_code (H R : nat) : hazard_pointer_sp_code := {|
-  hpsp_domain_new := hazard_domain_new_sp H;
-  hpsp_retirer_new := hazard_retirer_new_sp H R;
+Definition hazptr_sp_code (H R P : nat) : hazard_pointer_sp_code := {|
+  hpsp_domain_new := hazard_domain_new_sp H R P;
+  hpsp_retirer_new := hazard_retirer_new_sp H P;
+  hpsp_retirer_release := hazard_retirer_release_sp H P;
   hpsp_retire := hazard_retire_sp H R;
   hpsp_shield_new := shield_new_sp H;
   hpsp_shield_set := shield_set_sp;

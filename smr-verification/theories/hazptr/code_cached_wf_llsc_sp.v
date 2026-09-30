@@ -119,6 +119,7 @@ Section cached_wf_llsc_sp.
     λ: "ctx",
       hazptr.(hpsp_shield_drop) !("ctx" +ₗ #h1_off);;
       hazptr.(hpsp_shield_drop) !("ctx" +ₗ #h2_off);;
+      hazptr.(hpsp_retirer_release) !("ctx" +ₗ #retirer_off);;
       Free #4 "ctx".
 
 End cached_wf_llsc_sp.

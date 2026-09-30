@@ -12,19 +12,19 @@ Local Set Default Proof Using "All".
 (** * An end-to-end space bound
 
     [p] threads LL/SC a Cached-WaitFree big atomic of size [n] forever, on
-    hazard pointers with [H = 2 p] slots (two per thread) and retirers of
-    [R = H + 1] entries. Every reachable heap has at most [client_bound p n]
-    cells, a bound in [O(p² n)]: the domain ([H]), the source buffer and the
-    big atomic ([n + (2 n + 2)]), and per thread its state and retirer (which
-    holds at most [R] blocks of [n] cells) plus its LL buffer and SC backup
-    ([2 n]). *)
+    hazard pointers with [H = 2 p] slots (two per thread) and a pool of [p]
+    retirers of [R = H + 1] entries. Every reachable heap has at most
+    [client_bound p n] cells, a bound in [O(p² n)]: the domain (its slots and
+    pool, each retirer holding at most [R] blocks of [n] cells), the source
+    buffer and the big atomic ([n + (2 n + 2)]), and per thread its state plus
+    its LL buffer and SC backup ([4 + 2 n]). *)
 
 Section code.
   Variables (p n : nat).
 
   Definition cH : nat := 2 * p.
   Definition cR : nat := S cH.
-  Definition chp : hazard_pointer_sp_code := hazptr_sp_code cH cR.
+  Definition chp : hazard_pointer_sp_code := hazptr_sp_code cH cR p.
 
   Definition worker : val :=
     rec: "loop" "ba" "ctx" :=
@@ -47,15 +47,16 @@ Section code.
 
   Definition client : val :=
     λ: <>,
-      let: "dom" := hazard_domain_new_sp cH #() in
+      let: "dom" := hazard_domain_new_sp cH cR p #() in
       let: "src" := AllocN #n #0 in
       let: "ba" := cached_wf_llsc_new_sp n "src" "dom" in
       Free #n "src";;
       spawn #p "ba" "dom".
 
   (** The bound *)
-  Definition thread_space : nat := (4 + (hp_retirer_size cH cR + cR * n)) + 2 * n.
-  Definition client_bound : nat := cH + n + (S (S n) + n) + p * thread_space.
+  Definition domain_space : nat := cH + p + p * (hp_retirer_size cH cR + cR * n).
+  Definition thread_space : nat := 4 + 2 * n.
+  Definition client_bound : nat := domain_space + n + (S (S n) + n) + p * thread_space.
 End code.
 
 Definition clhpN := nroot .@ "hazptr_sp".
@@ -70,7 +71,7 @@ Section proof.
   Lemma cH0 : 0 < cH p. Proof. rewrite /cH. lia. Qed.
 
   Definition hz : hazard_pointer_sp_spec Σ clhpN :=
-    hazptr_sp_impl clhpN (cH p) (cR p) n cHR cH0.
+    hazptr_sp_impl clhpN (cH p) (cR p) n p cHR cH0.
 
   Lemma DISJ : clbaN ## clhpN. Proof. solve_ndisj. Qed.
 
@@ -112,7 +113,7 @@ Section proof.
 
   Lemma start_worker_spec γ γd (l : val) (d : loc) :
     {{{ BA_inv γ ∗ cba.(IsBigAtomicLLSCSp) γ γd l n ∗ hz.(IsHazardDomainSp) γd d ∗
-        ♢ (thread_space p n) }}}
+        ♢ (thread_space n) }}}
       start_worker p n l #d
     {{{ RET #(); False }}}.
   Proof.
@@ -126,7 +127,7 @@ Section proof.
 
   Lemma spawn_spec γ γd (l : val) (d : loc) (k : nat) :
     {{{ BA_inv γ ∗ cba.(IsBigAtomicLLSCSp) γ γd l n ∗ hz.(IsHazardDomainSp) γd d ∗
-        ♢ (k * thread_space p n) }}}
+        ♢ (k * thread_space n) }}}
       spawn p n #k l #d
     {{{ RET #(); True }}}.
   Proof.
@@ -134,7 +135,7 @@ Section proof.
     iInduction k as [|k] "IH".
     { wp_lam. wp_pures. by iApply "HΦ". }
     wp_lam. wp_pures.
-    rewrite (_ : (S k * thread_space p n)%nat = (thread_space p n + k * thread_space p n)%nat);
+    rewrite (_ : (S k * thread_space n)%nat = (thread_space n + k * thread_space n)%nat);
       last lia.
     iDestruct "Hc" as "[Hc1 Hc]".
     wp_apply (wp_fork with "[Hc1]").

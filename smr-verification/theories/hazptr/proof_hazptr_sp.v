@@ -33,7 +33,9 @@ Local Set Default Proof Using "All".
 
     A retirer holds at most [R] blocks: when it holds [R] it takes a snapshot
     of the [H] slots and keeps only the blocks in it, which are distinct, so at
-    most [H < R]. *)
+    most [H < R]. Its credits ([RetirerBody]) pay for the blocks it may still
+    take. The domain's pool of [NP] retirers is in the invariant: a free
+    retirer's body is there, and a thread that takes one takes its body. *)
 
 Record ninfo := NInfo {
   ni_blk : blk;
@@ -137,7 +139,7 @@ End shares.
 
 Section hazptr_sp.
 Context `{!heapGS_gen HasLc hsp Σ, !hazptr_spG Σ} (N : namespace).
-Context (H R K : nat) (HR : H < R) (HH : 0 < H).
+Context (H R K NP : nat) (HR : H < R) (HH : 0 < H).
 Notation iProp := (iProp Σ).
 Implicit Types (γs : hp_names) (Rs : resource Σ).
 
@@ -187,6 +189,37 @@ Definition node_inv γs (sst : gmap nat (option blk * option positive))
 Definition sst_ok (info : gmap positive ninfo) (sst : gmap nat (option blk * option positive)) : Prop :=
   ∀ s v i, sst !! s = Some (v, Some i) → ∃ x, info !! i = Some x ∧ v = Some x.(ni_blk).
 
+(** A retired block: a [Managed] whose flags record the slots it has seen
+    not protecting it, with their shares. *)
+Definition RetiredEntry γs (p : blk) (n : nat) : iProp :=
+  ∃ i γc γ_p Rs,
+    i ↪[γs.(γinfo)]□ NInfo p n γc γ_p ∗
+    coP_cinv (resN p i) γc (res Rs p n γ_p) ∗
+    shareE γs γc p i (Mset H) ∗
+    ([∗ list] s ∈ seq 0 H, ∃ b : bool, (i, s) ↪[γs.(γtk)] b ∗
+       if b then shareE γs γc p i {[slid s]} else True).
+
+Fixpoint enc_entries (L : list (blk * nat)) : list val :=
+  match L with
+  | [] => []
+  | (p, n) :: L => #(Loc.blk_to_loc p) :: #n :: enc_entries L
+  end.
+
+Definition retirer_cost : nat := (hp_retirer_size H R + R * K)%nat.
+
+(** A retirer of domain [d]: its pending blocks, and the credits that the
+    blocks it may still take would need. *)
+Definition RetirerBody γs (d t : loc) : iProp :=
+  ∃ (L : list (blk * nat)) (ents snap : list val) (bank : nat),
+    (t +ₗ rtDomain) ↦ #d ∗ (t +ₗ rtCount) ↦ #(length L) ∗
+    (t +ₗ rtEntries) ↦∗ ents ∗ (t +ₗ hp_snap_off R) ↦∗ snap ∗
+    †t…(hp_retirer_size H R) ∗
+    ⌜length L < R ∧ length ents = (2 * R)%nat ∧ length snap = H⌝ ∗
+    ⌜take (2 * length L)%nat ents = enc_entries L⌝ ∗
+    ⌜Forall (λ pn, pn.2 ≤ K) L⌝ ∗
+    ♢ bank ∗ ⌜(bank + sum_list (snd <$> L) = R * K)%nat⌝ ∗
+    ([∗ list] pn ∈ L, RetiredEntry γs pn.1 pn.2).
+
 Definition HazardDomain γs (d : loc) : iProp :=
   ∃ (info : gmap positive ninfo) (ptrs : gmap blk positive)
     (tkm : gmap (positive * nat) bool) (sst : gmap nat (option blk * option positive)),
@@ -198,7 +231,10 @@ Definition HazardDomain γs (d : loc) : iProp :=
     ⌜sst_ok info sst⌝ ∗
     ⌜∀ j s, is_Some (tkm !! (j, s)) → is_Some (info !! j)⌝ ∗
     ([∗ map] i ↦ x ∈ info, node_inv γs sst tkm i x) ∗
-    ([∗ map] p ↦ i ∈ ptrs, ∃ x, ⌜info !! i = Some x ∧ x.(ni_blk) = p⌝ ∗ †p…x.(ni_size)).
+    ([∗ map] p ↦ i ∈ ptrs, ∃ x, ⌜info !! i = Some x ∧ x.(ni_blk) = p⌝ ∗ †p…x.(ni_size)) ∗
+    (* The pool of retirers: a free retirer, or [NULL] if a thread holds it. *)
+    ([∗ list] j ∈ seq 0 NP, ∃ v : val, (d +ₗ (H + j)%nat) ↦ v ∗
+       (⌜v = #NULL⌝ ∨ ∃ t : loc, ⌜v = #t⌝ ∗ RetirerBody γs d t)).
 
 (** ** Representation predicates *)
 
@@ -207,6 +243,9 @@ Definition IsHazardDomain (γd : gname) (d : loc) : iProp :=
 
 Global Instance IsHazardDomain_Persistent γd d : Persistent (IsHazardDomain γd d).
 Proof. apply _. Qed.
+
+Definition Retirer (γd : gname) (t : loc) : iProp :=
+  ∃ γs (d : loc), ⌜γd = encode (γs, d)⌝ ∗ inv hpInvN (HazardDomain γs d) ∗ RetirerBody γs d t.
 
 Definition Managed (γd : gname) (p : blk) (γ_p : gname) (n : nat) Rs : iProp :=
   ∃ γs (d : loc) i γc, ⌜γd = encode (γs, d)⌝ ∗
@@ -227,36 +266,6 @@ Definition Shield (γd : gname) (sh : loc) (st : shield_state Σ) : iProp :=
         coP_cinv (resN p i) γc (res Rs p n γ_p) ∗
         shareE γs γc p i {[slid idx]}
     end.
-
-(** A retired block: a [Managed] whose flags record the slots it has seen
-    not protecting it, with their shares. *)
-Definition RetiredEntry γs (p : blk) (n : nat) : iProp :=
-  ∃ i γc γ_p Rs,
-    i ↪[γs.(γinfo)]□ NInfo p n γc γ_p ∗
-    coP_cinv (resN p i) γc (res Rs p n γ_p) ∗
-    shareE γs γc p i (Mset H) ∗
-    ([∗ list] s ∈ seq 0 H, ∃ b : bool, (i, s) ↪[γs.(γtk)] b ∗
-       if b then shareE γs γc p i {[slid s]} else True).
-
-Fixpoint enc_entries (L : list (blk * nat)) : list val :=
-  match L with
-  | [] => []
-  | (p, n) :: L => #(Loc.blk_to_loc p) :: #n :: enc_entries L
-  end.
-
-Definition retirer_cost : nat := (hp_retirer_size H R + R * K)%nat.
-
-Definition Retirer (γd : gname) (t : loc) : iProp :=
-  ∃ γs (d : loc) (L : list (blk * nat)) (ents snap : list val) (bank : nat),
-    ⌜γd = encode (γs, d)⌝ ∗ inv hpInvN (HazardDomain γs d) ∗
-    (t +ₗ rtDomain) ↦ #d ∗ (t +ₗ rtCount) ↦ #(length L) ∗
-    (t +ₗ rtEntries) ↦∗ ents ∗ (t +ₗ hp_snap_off R) ↦∗ snap ∗
-    †t…(hp_retirer_size H R) ∗
-    ⌜length L < R ∧ length ents = (2 * R)%nat ∧ length snap = H⌝ ∗
-    ⌜take (2 * length L)%nat ents = enc_entries L⌝ ∗
-    ⌜Forall (λ pn, pn.2 ≤ K) L⌝ ∗
-    ♢ bank ∗ ⌜(bank + sum_list (snd <$> L) = R * K)%nat⌝ ∗
-    ([∗ list] pn ∈ L, RetiredEntry γs pn.1 pn.2).
 
 (** ** Helpers *)
 
@@ -439,18 +448,82 @@ Qed.
 
 (** ** Specifications *)
 
-Lemma hazard_domain_new_spec :
-  hazard_domain_new_sp_spec' N (hazard_domain_new_sp H) H IsHazardDomain.
+(** A fresh retirer, but for its domain field. *)
+Lemma retirer_alloc γs (d : loc) E Φ :
+  ♢ retirer_cost -∗
+  (∀ t : loc, (t +ₗ rtDomain) ↦ #0 -∗ ((t +ₗ rtDomain) ↦ #d -∗ RetirerBody γs d t) -∗ Φ #t) -∗
+  WP AllocN #(hp_retirer_size H R) #0 @ E {{ Φ }}.
 Proof.
-  iIntros (E Φ) "Hc HΦ". iApply wp_fupd. wp_lam.
-  wp_apply (wp_allocN_cred with "[Hc]") as (d) "[†d Hd]"; first lia.
+  iIntros "Hc HΦ". rewrite /retirer_cost. iDestruct "Hc" as "[Hc Hbank]".
+  wp_apply (wp_allocN_cred with "[Hc]") as (t) "[†t Ht]"; first (rewrite /hp_retirer_size; lia).
   { by rewrite Nat2Z.id. }
   rewrite Nat2Z.id.
+  rewrite {2}/hp_retirer_size (replicate_add (2 + 2 * R) H) array_app.
+  rewrite (replicate_add 2 (2 * R)) array_app.
+  iDestruct "Ht" as "[[Hdc Hents] Hsnap]".
+  iEval (rewrite length_replicate) in "Hents".
+  iEval (rewrite length_app !length_replicate) in "Hsnap".
+  change (replicate 2 #0) with [ #0; #0].
+  rewrite array_cons array_singleton.
+  iDestruct "Hdc" as "[Hd Hc]".
+  iApply ("HΦ" with "[Hd]"); first by rewrite Loc.add_0.
+  iIntros "Hd". iExists [], (replicate (2 * R) #0), (replicate H #0), (R * K)%nat.
+  rewrite /hp_snap_off /= !length_replicate.
+  iFrame "∗ #". iPureIntro. split_and!; try done; try lia.
+Qed.
+
+Lemma hp_pool_init_spec γs (d : loc) (i : nat) E :
+  i ≤ NP →
+  {{{ ([∗ list] j ∈ seq i (NP - i), (d +ₗ (H + j)%nat) ↦ #()) ∗ ♢ ((NP - i) * retirer_cost) }}}
+    hp_pool_init H R NP #d #i @ E
+  {{{ RET #(); [∗ list] j ∈ seq i (NP - i), ∃ t : loc, (d +ₗ (H + j)%nat) ↦ #t ∗ RetirerBody γs d t }}}.
+Proof.
+  iIntros (Hi Φ) "[Hcells Hc] HΦ".
+  iLöb as "IH" forall (i Hi).
+  wp_lam. wp_pures. destruct (decide (i = NP)) as [->|Hne].
+  - rewrite (bool_decide_eq_true_2 (Z.of_nat NP = Z.of_nat NP)) //. wp_pures.
+    iApply "HΦ". by rewrite Nat.sub_diag.
+  - rewrite (bool_decide_eq_false_2 (Z.of_nat i = Z.of_nat NP)); last lia.
+    rewrite (_ : (NP - i)%nat = S (NP - S i)); last lia.
+    rewrite -cons_seq !big_sepL_cons.
+    iDestruct "Hcells" as "[Hcell Hcells]".
+    rewrite (_ : (S (NP - S i) * retirer_cost)%nat = (retirer_cost + (NP - S i) * retirer_cost)%nat);
+      last lia.
+    iDestruct "Hc" as "[Hc1 Hc]".
+    wp_pures. wp_bind (AllocN _ _).
+    iApply (retirer_alloc γs d with "Hc1"). iIntros (t) "Hd Hbody".
+    wp_pures. wp_store. iDestruct ("Hbody" with "Hd") as "Hbody".
+    wp_pures. rewrite -Nat2Z.inj_add. wp_store. wp_pures.
+    replace (Z.of_nat i + 1)%Z with (Z.of_nat (S i)) by lia.
+    iApply ("IH" with "[%] Hcells Hc"); first lia.
+    iIntros "!> Hcells". iApply "HΦ".
+    iSplitL "Hcell Hbody"; last iExact "Hcells".
+    iExists t. iSplitL "Hcell"; [iExact "Hcell"|iExact "Hbody"].
+Qed.
+
+Lemma hazard_domain_new_spec :
+  hazard_domain_new_sp_spec' N (hazard_domain_new_sp H R NP) (H + NP + NP * retirer_cost)%nat
+    IsHazardDomain.
+Proof.
+  iIntros (E Φ) "[Hc Hcr] HΦ". iApply wp_fupd. wp_lam.
+  wp_apply (wp_allocN_cred with "[Hc]") as (d) "[†d Hd]"; first lia.
+  { by rewrite -?Nat2Z.inj_add Nat2Z.id. }
+  rewrite -?Nat2Z.inj_add Nat2Z.id replicate_add array_app length_replicate.
+  iDestruct "Hd" as "[Hd Hcells]".
+  iAssert ([∗ list] j ∈ seq 0 (NP - 0), (Loc.blk_to_loc d +ₗ (H + j)%nat) ↦ #())%I
+    with "[Hcells]" as "Hcells".
+  { rewrite Nat.sub_0_r /array big_sepL_replicate_seq.
+    iApply (big_sepL_mono with "Hcells"). iIntros (k j _) "Hj".
+    by rewrite Loc.add_assoc Nat2Z.inj_add. }
   iMod (ghost_map_alloc (∅ : gmap positive ninfo)) as (γi) "[Hi _]".
   iMod (coP_ghost_map_alloc (∅ : gmap blk positive)) as (γp) "[Hp _]".
   iMod (ghost_map_alloc (∅ : gmap (positive * nat) bool)) as (γt) "[Ht _]".
   iMod (ghost_map_alloc sst0) as (γq) "[Hq Hqs]".
   set γs := HPNames γi γp γt γq.
+  wp_pures.
+  wp_apply (hp_pool_init_spec γs d 0 with "[$Hcells Hcr]") as "Hpool"; first lia.
+  { by rewrite Nat.sub_0_r. }
+  wp_pures.
   iMod (inv_alloc (hpInvN) _ (HazardDomain γs d) with "[-HΦ]") as "#Hinv".
   { iNext. iExists ∅, ∅, ∅, sst0. iFrame "Hi Hp Ht Hq".
     rewrite /sst0 big_sepM_map_seq big_sepL_replicate_seq.
@@ -463,7 +536,9 @@ Proof.
       iSplit; first done. iLeft. by iFrame. }
     iSplit; first (iPureIntro; apply sst0_ok).
     iSplit; first (iPureIntro; intros ?? [? Hx]; by rewrite lookup_empty in Hx).
-    by rewrite !big_sepM_empty. }
+    rewrite !big_sepM_empty Nat.sub_0_r. iSplit; first done. iSplit; first done.
+    iApply (big_sepL_mono with "Hpool"). iIntros (k j _) "(%t & Hj & Hb)".
+    iExists #t. iFrame. iRight. iExists t. by iFrame. }
   iApply ("HΦ" $! (encode (γs, Loc.blk_to_loc d))). iModIntro. iExists γs. by iFrame "Hinv".
 Qed.
 
@@ -471,7 +546,7 @@ Lemma hazard_domain_register : hazard_domain_register_sp' N IsHazardDomain Manag
 Proof.
   iIntros (Rs E p lv γ_p γd d HE) "#(%γs & -> & Hinv) (Hp & †p & HR)".
   iInv "Hinv" as (info ptrs tkm sst)
-    "(>Hinfo & >Hptrs & >Htk & >Hsst & Hslots & >%Hok & >%Htkok & Hnodes & >Hfree)" "Hcl".
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & Hslots & >%Hok & >%Htkok & Hnodes & >Hfree & Hpool)" "Hcl".
   (* [p] is not registered: the invariant would hold its freeable permission. *)
   destruct (ptrs !! p) as [i0|] eqn:Hp0.
   { iDestruct (big_sepM_lookup with "Hfree") as (x) "(_ & †p')"; first done.
@@ -506,7 +581,7 @@ Proof.
       - destruct (Htkok j s) as [x Hx]; first by eexists.
         destruct (decide (j = i)) as [->|]; first by rewrite Hi in Hx.
         rewrite lookup_insert_ne //; by eexists. }
-    iSplitR "Hfree †p".
+    iSplitR "Hfree †p Hpool".
     - rewrite big_sepM_insert //. iSplitL "Hshs".
       + rewrite /node_inv. iApply (big_sepL_mono with "Hshs"). iIntros (k s Hks) "Hs".
         apply list_elem_of_lookup_2, elem_of_seq in Hks.
@@ -519,7 +594,8 @@ Proof.
         iApply (big_sepL_mono with "Hn"). iIntros (k s _) "(%b & %Hb & Hs)".
         iExists b. iFrame. iPureIntro. apply lookup_union_Some_raw. right. split; last done.
         rewrite lookup_tk0 bool_decide_false //. intros [-> _]. by rewrite Hi in Hjx.
-    - rewrite big_sepM_insert //. iSplitL "†p".
+    - iSplitR "Hpool"; last iExact "Hpool".
+      rewrite big_sepM_insert //. iSplitL "†p".
       { iExists (NInfo p (length lv) γc γ_p). iFrame. iPureIntro.
         split; [by rewrite lookup_insert_eq|done]. }
       iApply (big_sepM_mono with "Hfree"). iIntros (q j Hqj) "(%x & [%Hx %] & ?)".
@@ -586,7 +662,7 @@ Proof.
   iDestruct "Hsh" as (γs d' idx vo) "(-> & -> & %Hidx & #Hinv & Hfrag & Hst)".
   wp_lam. wp_pures.
   iInv "Hinv" as (info ptrs tkm sst)
-    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
   iApply (shield_write _ _ _ _ p with "Hinfo Hsst Hfrag Hslots [//] Hnodes Hst"); [done|done|].
   iIntros "Hinfo Hsst Hfrag Hslots %Hok' Hnodes". iModIntro.
   iMod ("Hcl" with "[-HΦ Hfrag]") as "_".
@@ -601,7 +677,7 @@ Proof.
   iDestruct "Hsh" as (γs d' idx vo) "(-> & -> & %Hidx & #Hinv & Hfrag & Hst)".
   wp_lam. wp_pures.
   iInv "Hinv" as (info ptrs tkm sst)
-    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
   iApply (shield_write _ _ _ _ None with "Hinfo Hsst Hfrag Hslots [//] Hnodes Hst"); [done|done|].
   iIntros "Hinfo Hsst Hfrag Hslots %Hok' Hnodes". iModIntro.
   iMod ("Hcl" with "[-HΦ Hfrag]") as "_".
@@ -615,7 +691,7 @@ Proof.
   iDestruct "Hsh" as (γs d' idx vo) "(-> & -> & %Hidx & #Hinv & Hfrag & Hst)".
   wp_lam. wp_pures.
   iInv "Hinv" as (info ptrs tkm sst)
-    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
   iDestruct (ghost_map_lookup with "Hsst Hfrag") as %Hvo.
   iDestruct (slots_acc γs d' sst idx (None, None) with "Hslots") as "[(%vo0 & %Hvo0 & Hslot) Hslots]";
     first done.
@@ -654,7 +730,7 @@ Proof.
     - assert (i < H) as Hlt by (assert (i ≠ H) by (intros ->; done); lia).
       wp_pures. wp_bind (CmpXchg _ _ _).
       iInv "Hinv" as (info ptrs tkm sst)
-        "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+        "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
       iDestruct (big_sepL_lookup_acc with "Hslots") as "[(%vo & %Hvo & Hslot) Hslots]";
         first by apply lookup_seq_lt.
       iDestruct "Hslot" as "[(Hw & -> & Hfrag) | Hw]".
@@ -683,7 +759,7 @@ Proof.
   iDestruct "Hsh" as (γs'' d'' idx vo) "(%Henc' & -> & %Hidx & _ & Hfrag & ->)".
   apply (inj encode) in Henc' as [= <- <-].
   iInv "Hinv" as (info ptrs tkm sst)
-    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
   iDestruct (ghost_map_lookup with "Hsst Hfrag") as %Hvo.
   iDestruct (ghost_map_lookup with "Hinfo Hi") as %Hx.
   iDestruct (big_sepL_lookup_acc with "Htks") as "[Htk_idx Htks]"; first by apply lookup_seq_lt.
@@ -882,27 +958,102 @@ Proof.
     by apply IH.
 Qed.
 
+
+Lemma NULL_ne_loc (t : loc) : #t ≠ #NULL.
+Proof. by intros [=]. Qed.
+
 Lemma hazard_retirer_new_spec :
-  hazard_retirer_new_spec' N (hazard_retirer_new_sp H R) retirer_cost IsHazardDomain Retirer.
+  hazard_retirer_new_spec' N (hazard_retirer_new_sp H NP) IsHazardDomain Retirer.
 Proof.
-  iIntros (E γd d HE) "#(%γs & -> & #Hinv)". iIntros (Φ) "!> Hc HΦ".
-  rewrite /retirer_cost. iDestruct "Hc" as "[Hc Hbank]".
+  iIntros (E γd d HE) "#(%γs & -> & #Hinv)". iIntros (Φ) "!> _ HΦ".
   wp_lam.
-  wp_apply (wp_allocN_cred with "[Hc]") as (t) "[†t Ht]"; first (rewrite /hp_retirer_size; lia).
-  { by rewrite Nat2Z.id. }
-  rewrite Nat2Z.id.
-  rewrite {2}/hp_retirer_size (replicate_add (2 + 2 * R) H) array_app.
-  rewrite (replicate_add 2 (2 * R)) array_app.
-  iDestruct "Ht" as "[[Hdc Hents] Hsnap]".
-  iEval (rewrite length_replicate) in "Hents".
-  iEval (rewrite length_app !length_replicate) in "Hsnap".
-  change (replicate 2 #0) with [ #0; #0].
-  rewrite array_cons array_singleton.
-  iDestruct "Hdc" as "[Hd Hc]".
-  wp_pures. rewrite Loc.add_0. wp_store.
-  iApply "HΦ". iExists γs, d, [], (replicate (2 * R) #0), (replicate H #0), (R * K)%nat.
-  rewrite /hp_snap_off /= !length_replicate Loc.add_0.
-  iFrame "∗ #". iPureIntro. split_and!; try done; try lia.
+  iAssert (∀ (i : nat), ⌜i ≤ NP⌝ -∗ WP hazard_retirer_new_loop H NP #d #i @ E {{ Φ }})%I
+    with "[HΦ]" as "Hloop"; last (iApply ("Hloop" $! 0); iPureIntro; lia).
+  iLöb as "IH". iIntros (i Hi). wp_lam. wp_pures.
+  destruct (decide (i = NP)) as [->|Hne].
+  { rewrite (bool_decide_eq_true_2 (Z.of_nat NP = Z.of_nat NP)) //. wp_pures.
+    iSpecialize ("IH" with "HΦ"). iApply ("IH" $! 0 with "[%]"). lia. }
+  rewrite (bool_decide_eq_false_2 (Z.of_nat i = Z.of_nat NP)); last lia.
+  have Hl : seq 0 NP !! i = Some i by rewrite lookup_seq_lt; last lia.
+  wp_pures. rewrite -Nat2Z.inj_add.
+  (* read the cell *)
+  wp_bind (! _)%E.
+  iInv "Hinv" as (info ptrs tkm sst)
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
+  iDestruct (big_sepL_lookup_acc with "Hpool") as "[(%v & >Hv & Hcase) Hpool]"; first done.
+  wp_load.
+  iMod ("Hcl" with "[-HΦ]") as "_".
+  { iNext. iExists info, ptrs, tkm, sst. iFrame. iSplit; first done. iSplit; first done. iApply "Hpool". iExists v. iFrame. }
+  iModIntro. wp_pures.
+  destruct (decide (v = #NULL)) as [->|Hvne].
+  { rewrite (bool_decide_eq_true_2 (#NULL = #NULL)) //. wp_pures.
+    replace (Z.of_nat i + 1)%Z with (Z.of_nat (S i)) by lia.
+    iSpecialize ("IH" with "HΦ"). iApply ("IH" $! (S i) with "[%]"). lia. }
+  rewrite (bool_decide_eq_false_2 (v = #NULL)) //. wp_pures. rewrite -Nat2Z.inj_add.
+  wp_bind (CmpXchg _ _ _).
+  iInv "Hinv" as (info' ptrs' tkm' sst')
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok' & >%Htkok' & >Hnodes & >Hfree & Hpool)" "Hcl".
+  iDestruct (big_sepL_lookup_acc with "Hpool") as "[(%v' & >Hv & Hcase) Hpool]"; first done.
+  destruct (decide (v' = v)) as [->|Hne'].
+  - iDestruct "Hcase" as "[>%Heq|(%t & >-> & Hbody)]"; first done.
+    wp_cmpxchg_suc.
+    iMod ("Hcl" with "[-HΦ Hbody]") as "_".
+    { iNext. iExists info', ptrs', tkm', sst'. iFrame. iSplit; first done. iSplit; first done. iApply "Hpool". iExists #NULL. iFrame.
+      by iLeft. }
+    iModIntro. wp_pures. iApply "HΦ". iModIntro. iExists γs, d.
+    iSplit; first done. iSplit; first done. iExact "Hbody".
+  - iAssert (▷ (⌜val_is_unboxed v'⌝ ∗
+                (⌜v' = #NULL⌝ ∨ ∃ t : loc, ⌜v' = #t⌝ ∗ RetirerBody γs d t)))%I
+      with "[Hcase]" as "[>%Hub Hcase]".
+    { iNext. iDestruct "Hcase" as "[->|(%t & -> & Hb)]".
+      - iSplit; [done|by iLeft].
+      - iSplit; first done. iRight. iExists t. iSplit; first done. iExact "Hb". }
+    wp_cmpxchg_fail.
+    iMod ("Hcl" with "[-HΦ]") as "_".
+    { iNext. iExists info', ptrs', tkm', sst'. iFrame. iSplit; first done. iSplit; first done. iApply "Hpool". iExists v'. iFrame. }
+    iModIntro. wp_pures.
+    replace (Z.of_nat i + 1)%Z with (Z.of_nat (S i)) by lia.
+    iSpecialize ("IH" with "HΦ"). iApply ("IH" $! (S i) with "[%]"). lia.
+Qed.
+
+Lemma hazard_retirer_release_spec :
+  hazard_retirer_release_spec' N (hazard_retirer_release_sp H NP) Retirer.
+Proof.
+  iIntros (E γd t HE Φ) "(%γs & %d & -> & #Hinv & Hbody) HΦ".
+  wp_lam.
+  iAssert (∃ v, (t +ₗ rtDomain) ↦ v ∗ ⌜v = #d⌝ ∗ ((t +ₗ rtDomain) ↦ v -∗ RetirerBody γs d t))%I
+    with "[Hbody]" as (v) "(Hd & -> & Hbody)".
+  { iDestruct "Hbody" as (L ents snap bank) "(Hd & Hrest)". iExists _. iFrame "Hd".
+    iSplit; first done. iIntros "Hd". iExists L, ents, snap, bank. iFrame. }
+  wp_load.
+  iDestruct ("Hbody" with "Hd") as "Hbody".
+  wp_pures.
+  iAssert (∀ (i : nat), ⌜i ≤ NP⌝ -∗ RetirerBody γs d t -∗
+    WP hazard_retirer_release_loop H NP #d #t #i @ E {{ Φ }})%I
+    with "[HΦ]" as "Hloop"; last (iApply ("Hloop" $! 0 with "[%] Hbody"); lia).
+  iLöb as "IH". iIntros (i Hi) "Hbody". wp_lam. wp_pures.
+  destruct (decide (i = NP)) as [->|Hne].
+  { rewrite (bool_decide_eq_true_2 (Z.of_nat NP = Z.of_nat NP)) //. wp_pures.
+    iSpecialize ("IH" with "HΦ"). iApply ("IH" $! 0 with "[%] Hbody"). lia. }
+  rewrite (bool_decide_eq_false_2 (Z.of_nat i = Z.of_nat NP)); last lia.
+  have Hl : seq 0 NP !! i = Some i by rewrite lookup_seq_lt; last lia.
+  wp_pures. rewrite -Nat2Z.inj_add.
+  wp_bind (CmpXchg _ _ _).
+  iInv "Hinv" as (info ptrs tkm sst)
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
+  iDestruct (big_sepL_lookup_acc with "Hpool") as "[(%v & >Hv & Hcase) Hpool]"; first done.
+  destruct (decide (v = #NULL)) as [->|Hne'].
+  - wp_cmpxchg_suc.
+    iMod ("Hcl" with "[-HΦ]") as "_".
+    { iNext. iExists info, ptrs, tkm, sst. iFrame. iSplit; first done. iSplit; first done. iApply "Hpool". iExists #t.
+      iSplitL "Hv"; first iExact "Hv". iRight. iExists t. iSplit; first done. iExact "Hbody". }
+    iModIntro. wp_pures. by iApply "HΦ".
+  - wp_cmpxchg_fail.
+    iMod ("Hcl" with "[-HΦ Hbody]") as "_".
+    { iNext. iExists info, ptrs, tkm, sst. iFrame. iSplit; first done. iSplit; first done. iApply "Hpool". iExists v. iFrame. }
+    iModIntro. wp_pures.
+    replace (Z.of_nat i + 1)%Z with (Z.of_nat (S i)) by lia.
+    iSpecialize ("IH" with "HΦ"). iApply ("IH" $! (S i) with "[%] Hbody"). lia.
 Qed.
 
 Lemma hp_snap_contains_spec (t : loc) snap (p : blk) (s : nat) E :
@@ -1014,7 +1165,7 @@ Proof.
     assert (s < H) as Hlt by lia.
     wp_pures. wp_bind (! _)%E.
     iInv "Hinv" as (info ptrs tkm sst)
-      "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+      "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
     iDestruct (big_sepL_lookup_acc with "Hslots") as "[(%vo & %Hvo & Hslot) Hslots]";
       first by apply lookup_seq_lt.
     iAssert (∃ w, (d +ₗ s) ↦ w ∗ ⌜(w = #() ∧ vo = (None, None)) ∨ w = #(oblk_to_lit vo.1)⌝ ∗
@@ -1059,7 +1210,7 @@ Proof.
   iMod (coP_cinv_cancel with "Hci Hown") as "Hres"; first solve_ndisj.
   iDestruct "Hres" as (lv) "(>%Hlen & >Hp & _)".
   iInv "Hinv" as (info ptrs tkm sst)
-    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree)" "Hcl".
+    "(>Hinfo & >Hptrs & >Htk & >Hsst & >Hslots & >%Hok & >%Htkok & >Hnodes & >Hfree & Hpool)" "Hcl".
   iDestruct (coP_ghost_map_lookup with "Hptrs Hpe") as %Hpi.
   iDestruct (ghost_map_lookup with "Hinfo Hi") as %Hx.
   iDestruct (big_sepM_delete with "Hfree") as "[(%x & [%Hx' _] & †p) Hfree]"; first done.
@@ -1250,8 +1401,8 @@ Qed.
 Lemma hazard_retire_spec : hazard_retire_spec' N (hazard_retire_sp H R) K Managed Retirer.
 Proof.
   iIntros (E γd t Rs p γ_p n HE Hn Φ) "[Hret HM] HΦ".
-  iDestruct "Hret" as (γs d L ents snap bank)
-    "(-> & #Hinv & Hd & Hc & Hents & Hsnap & †t & (%HLR & %Hents & %Hsnap) & %Htake & %HF &
+  iDestruct "Hret" as (γs d) "(-> & #Hinv & %L & %ents & %snap & %bank &
+      Hd & Hc & Hents & Hsnap & †t & (%HLR & %Hents & %Hsnap) & %Htake & %HF &
       Hbank & %Hbank & HL)".
   iDestruct "HM" as (γs' d' i γc) "(%Henc & #Hi & #Hci & HMsh & Htks)".
   apply (inj encode) in Henc as [= <- <-].
@@ -1291,7 +1442,8 @@ Proof.
     { rewrite length_app /=. lia. }
     { by rewrite !length_insert. }
     { rewrite big_sepL_app /=. by iFrame. }
-    iApply "HΦ". iSplitR "Hn"; last done. iExists γs, d, L', ents', snap', bank'. iFrame "∗ #".
+    iApply "HΦ". iSplitR "Hn"; last done. iExists γs, d. iFrame "Hinv".
+    iSplit; first done. iExists L', ents', snap', bank'. iFrame "∗ #".
     iPureIntro. split_and!; try done; lia.
   - rewrite (bool_decide_eq_false_2 (Z.of_nat (length L) + 1 = Z.of_nat R)%Z); last lia.
     wp_pures.
@@ -1299,9 +1451,9 @@ Proof.
       by (rewrite length_app /=; lia).
     wp_store.
     iApply "HΦ". iSplitR "Hn"; last done.
-    iExists γs, d, (L ++ [(p, n)]), _, snap, (bank - n)%nat.
-    iFrame "Hd Hc Hents Hsnap †t Hbank Hinv". iModIntro.
-    iSplit; first done.
+    iExists γs, d. iFrame "Hinv". iModIntro. iSplit; first done.
+    iExists (L ++ [(p, n)]), _, snap, (bank - n)%nat.
+    iFrame "Hd Hc Hents Hsnap †t Hbank".
     iSplit.
     { iPureIntro. rewrite length_app !length_insert. change (length [(p, n)]) with 1%nat.
       split_and!; lia. }
@@ -1310,11 +1462,10 @@ Proof.
 Qed.
 
 Definition hazptr_sp_impl : hazard_pointer_sp_spec Σ N := {|
-  hazard_pointer_sp_spec_code := hazptr_sp_code H R;
+  hazard_pointer_sp_spec_code := hazptr_sp_code H R NP;
 
   hp_kmax := K;
-  hp_domain_cost := H;
-  hp_retirer_cost := retirer_cost;
+  hp_domain_cost := (H + NP + NP * retirer_cost)%nat;
 
   IsHazardDomainSp := IsHazardDomain;
   ManagedSp := Managed;
@@ -1336,6 +1487,7 @@ Definition hazptr_sp_impl : hazard_pointer_sp_spec Σ N := {|
   managed_exclusive_sp := managed_exclusive;
   shield_managed_agree_sp := shield_managed_agree;
   spec_hazptr_sp.hazard_retirer_new_spec := hazard_retirer_new_spec;
+  spec_hazptr_sp.hazard_retirer_release_spec := hazard_retirer_release_spec;
   spec_hazptr_sp.hazard_retire_spec := hazard_retire_spec;
 |}.
 
