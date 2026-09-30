@@ -22,7 +22,14 @@ Definition inv_heap_mapUR  : ucmra := gmapUR loc $ prodR
   (optionR $ exclR $ valO)
   (agreeR (val -d> PropO)).
 
-Class heapGS_gen hlc Σ := HeapGS {
+(** Space credits. The heap is indexed by whether its size is bounded: with
+    [HasSpace], the state interpretation relates the size of the heap to a
+    budget [heap_space_budget], and allocating [n] cells costs [n] space credits
+    [♢ n], which freeing gives back. With [NoSpace], space credits can be
+    created at will, so they are not needed to allocate. *)
+Inductive has_space := NoSpace | HasSpace.
+
+Class heapGS_gen hlc (hsp : has_space) Σ := HeapGS {
   heapGS_invGS : invGS_gen hlc Σ;
   heap_name : gname;
   #[global] heapGS_inG :: ghost_mapG Σ loc val;
@@ -33,13 +40,17 @@ Class heapGS_gen hlc Σ := HeapGS {
   #[global] heapGS_proph_mapGS :: proph_mapGS proph_id (val * val) Σ;
   heapGS_step_name : gname;
   heapGS_step_cnt : mono_natG Σ;
+  heap_space_name : gname;
+  heap_space_inG : inG Σ (authR natUR);
+  heap_space_budget : nat;
 }.
 Local Existing Instance heapGS_step_cnt.
+Local Existing Instance heap_space_inG.
 
-Notation heapGS := (heapGS_gen HasLc).
+Notation heapGS := (heapGS_gen HasLc NoSpace).
 
 Section steps.
-  Context `{!heapGS_gen hlc Σ}.
+  Context `{!heapGS_gen hlc hsp Σ}.
 
   Local Definition steps_auth (n : nat) : iProp Σ :=
     mono_nat_auth_own_frac heapGS_step_name 1 n.
@@ -80,7 +91,7 @@ Definition heap_freeable_rel (m : memory) (hF : heap_freeableUR) : Prop :=
     qs.2 ≠ ∅ ∧ ∀ i, is_Some (m !! (b, i)) ↔ is_Some (qs.2 !! i).
 
 Section heap_definitions.
-  Context `{!heapGS_gen hlc Σ}.
+  Context `{!heapGS_gen hlc hsp Σ}.
 
   Definition pointsto_st
              (l : loc) (dq : dfrac) (v: val) : iProp Σ :=
@@ -106,11 +117,29 @@ Section heap_definitions.
   Definition heap_freeable_unseal : @heap_freeable = @heap_freeable_def :=
     heap_freeable_aux.(seal_eq).
 
+  (** [♢ n]: the permission to allocate [n] cells. *)
+  Definition space_cred_def (n : nat) : iProp Σ :=
+    own heap_space_name (◯ n).
+  Definition space_cred_aux : seal (@space_cred_def). Proof. by eexists. Qed.
+  Definition space_cred := unseal space_cred_aux.
+  Definition space_cred_unseal : @space_cred = @space_cred_def :=
+    space_cred_aux.(seal_eq).
+
+  (** The [m] credits issued and the heap fit in the budget. *)
+  Definition space_ok (mem : memory) (m : nat) : Prop :=
+    hsp = HasSpace → (size mem + m = heap_space_budget)%nat.
+
+  Definition space_interp (mem : memory) : iProp Σ :=
+    ∃ m, own heap_space_name (● m) ∗ ⌜space_ok mem m⌝.
+
   Definition heap_ctx (mem:memory) : iProp Σ :=
     (∃ hF, ghost_map_auth_frac heap_name 1 mem
          ∗ own heap_freeable_name (● hF)
-         ∗ ⌜heap_freeable_rel mem hF⌝)%I.
+         ∗ ⌜heap_freeable_rel mem hF⌝
+         ∗ space_interp mem)%I.
 End heap_definitions.
+
+Notation "'♢' n" := (space_cred n) (at level 1) : bi_scope.
 
 Notation "l ↦ dq v" := (pointsto l dq v)
   (at level 20, dq custom dfrac at level 1, format "l  ↦ dq  v") : bi_scope.
@@ -124,7 +153,7 @@ Notation "† l … n" := (heap_freeable l 1 n) (at level 20) : bi_scope.
 
 
 Section heap.
-  Context `{!heapGS_gen hlc Σ}.
+  Context `{!heapGS_gen hlc hsp Σ}.
   Implicit Types P Q : iProp Σ.
   Implicit Types σ : memory.
   Implicit Types E : coPset.
@@ -165,6 +194,30 @@ Section heap.
 
   Global Instance heap_freeable_timeless q l n : Timeless (†{q}l…n).
   Proof. rewrite heap_freeable_unseal /heap_freeable_def. apply _. Qed.
+
+  (** Space credits *)
+  Global Instance space_cred_timeless (n : nat) : Timeless (♢ n).
+  Proof. rewrite space_cred_unseal. apply _. Qed.
+
+  Lemma space_cred_split (n1 n2 : nat) : ♢ (n1 + n2) ⊣⊢ ♢ n1 ∗ ♢ n2.
+  Proof. by rewrite space_cred_unseal /space_cred_def -own_op -auth_frag_op nat_op. Qed.
+
+  Global Instance space_cred_combine (n1 n2 : nat) : CombineSepAs (♢ n1) (♢ n2) (♢ (n1 + n2)).
+  Proof. by rewrite /CombineSepAs space_cred_split. Qed.
+
+  Lemma space_cred_zero : ⊢ |==> ♢ 0.
+  Proof. rewrite space_cred_unseal. apply own_unit. Qed.
+
+  Lemma space_cred_weaken (n1 n2 : nat) : n2 ≤ n1 → ♢ n1 -∗ ♢ n2.
+  Proof.
+    intros ?. rewrite (_ : n1 = (n2 + (n1 - n2))%nat); last lia.
+    rewrite space_cred_split. iIntros "[$ _]".
+  Qed.
+
+  Global Instance from_sep_space_cred (n1 n2 : nat) : FromSep (♢ (n1 + n2)) (♢ n1) (♢ n2).
+  Proof. by rewrite /FromSep space_cred_split. Qed.
+  Global Instance into_sep_space_cred (n1 n2 : nat) : IntoSep (♢ (n1 + n2)) (♢ n1) (♢ n2).
+  Proof. by rewrite /IntoSep space_cred_split. Qed.
 
   Lemma pointsto_valid l dq v : l ↦{dq} v -∗ ⌜✓ dq⌝.
   Proof. rewrite pointsto_unseal. apply ghost_map_elem_valid. Qed.
@@ -430,14 +483,79 @@ Section heap.
     done.
   Qed.
 
+  Lemma size_init_mem σ (l : loc) (n : nat) v :
+    (∀ m : Z, σ !! (l +ₗ m) = None) → size (init_mem l n v σ) = (n + size σ)%nat.
+  Proof.
+    revert l. induction n as [|n IH]=> l FRESH /=; first done.
+    rewrite map_size_insert_None.
+    - rewrite IH //. intros m. rewrite Loc.add_assoc. apply FRESH.
+    - rewrite lookup_init_mem_ne.
+      + specialize (FRESH 0). by rewrite Loc.add_0 in FRESH.
+      + right. left. destruct l. simpl. lia.
+  Qed.
+
+  Lemma lookup_free_mem_out σ (l l' : loc) (n : nat) :
+    (l.1 ≠ l'.1 ∨ l'.2 < l.2 ∨ l.2 + n ≤ l'.2)%Z →
+    free_mem l n σ !! l' = σ !! l'.
+  Proof.
+    revert l. induction n as [|n IH]=> /= l Hl; auto.
+    rewrite lookup_delete_ne; last (intros ->; intuition lia).
+    apply IH. simpl. intuition lia.
+  Qed.
+
+  Lemma size_free_mem σ (l : loc) (n : nat) :
+    (∀ m : Z, 0 ≤ m < n → is_Some (σ !! (l +ₗ m)))%Z →
+    (size (free_mem l n σ) + n = size σ)%nat.
+  Proof.
+    revert l. induction n as [|n IH]=> l Hin; first (simpl; lia).
+    change (free_mem l (S n) σ) with (delete l (free_mem (l +ₗ 1) n σ)).
+    have [x Hx] : is_Some (free_mem (l +ₗ 1) n σ !! l).
+    { rewrite lookup_free_mem_out; last (right; left; destruct l; simpl; lia).
+      specialize (Hin 0%Z). rewrite Loc.add_0 in Hin. apply Hin. lia. }
+    rewrite -(IH (l +ₗ 1)); last (intros m ?; rewrite Loc.add_assoc; apply Hin; lia).
+    rewrite -{2}(insert_delete_id _ _ _ Hx) map_size_insert_None ?lookup_delete_eq //.
+    (* [lia] fails here: the two [size] atoms differ in their implicit instances. *)
+    rewrite -plus_n_Sm. reflexivity.
+  Qed.
+
+  (** With [NoSpace], space credits can be created at will. *)
+  Lemma space_interp_mint σ (n : nat) :
+    hsp = NoSpace → space_interp σ ==∗ space_interp σ ∗ ♢ n.
+  Proof.
+    iIntros (Hsp) "(%m & Hm & _)". rewrite space_cred_unseal.
+    iMod (own_update _ _ (● (m + n)%nat ⋅ ◯ n) with "Hm") as "[Hm $]".
+    { apply auth_update_alloc, nat_local_update. rewrite ?right_id. lia. }
+    iModIntro. iExists _. iFrame. iPureIntro. intros Hsp'. rewrite Hsp in Hsp'. discriminate.
+  Qed.
+
+  Lemma heap_ctx_mint σ (n : nat) :
+    hsp = NoSpace → heap_ctx σ ==∗ heap_ctx σ ∗ ♢ n.
+  Proof.
+    iIntros (Hsp) "(%hF & Hσ & HhF & Hrel & Hsp)".
+    iMod (space_interp_mint with "Hsp") as "[Hsp $]"; first done.
+    iModIntro. iExists hF. iFrame.
+  Qed.
+
+  (** The heap fits in the budget. *)
+  Lemma heap_ctx_size σ :
+    hsp = HasSpace → heap_ctx σ -∗ ⌜(size σ ≤ heap_space_budget)%nat⌝.
+  Proof.
+    iIntros (Hsp) "(%hF & _ & _ & _ & %m & _ & %Hok)".
+    iPureIntro. specialize (Hok Hsp). lia.
+  Qed.
+
   Lemma heap_alloc σ (l:blk) n v :
     0 < n →
     (∀ m, σ !! (l,m) = None) →
-    heap_ctx σ ==∗
+    heap_ctx σ -∗ ♢ (Z.to_nat n) ==∗
       heap_ctx (init_mem l (Z.to_nat n) v σ) ∗ †l…(Z.to_nat n) ∗
       l ↦∗ replicate (Z.to_nat n) v.
   Proof.
-    intros ??; iDestruct 1 as (hF) "(Hvalσ & HhF & %)".
+    intros ??; iDestruct 1 as (hF) "(Hvalσ & HhF & % & %m & Hm & %Hok)".
+    iIntros "Hc". rewrite space_cred_unseal.
+    iCombine "Hm Hc" gives %[Hle%nat_included _]%auth_both_valid_discrete.
+    iMod (own_update_2 _ _ _ (● (m - Z.to_nat n)%nat) with "Hm Hc") as "Hm".
+    { apply auth_update_dealloc, nat_local_update. rewrite ?right_id. lia. }
     assert (Z.to_nat n ≠ O) as Not0 by lia.
     iMod (heap_alloc_vs _ (l,0%Z) (Z.to_nat n) with "[$Hvalσ]") as "[Hvalσ Hmapsto]"; first done.
     iMod (own_update _ (● hF) with "HhF") as "[HhF Hfreeable]".
@@ -445,9 +563,11 @@ Section heap.
         (alloc_singleton_local_update _ l (1%Qp, inter 0%Z (Z.to_nat n))).
       - eauto using heap_freeable_rel_None.
       - split; first done. apply inter_valid. }
-    iModIntro. iSplitL "Hvalσ HhF".
-    { iExists _. iFrame. iPureIntro.
-      auto using heap_freeable_rel_init_mem. }
+    iModIntro. iSplitL "Hvalσ HhF Hm".
+    { iExists _. iFrame. iSplit.
+      - iPureIntro. auto using heap_freeable_rel_init_mem.
+      - iPureIntro. intros Hsp. specialize (Hok Hsp).
+        rewrite size_init_mem //. lia. }
     rewrite heap_freeable_unseal /heap_freeable_def. iFrame.
     iPureIntro. lia.
   Qed.
@@ -506,9 +626,9 @@ Section heap.
     n = length vl →
     heap_ctx σ -∗ l ↦∗ vl -∗ †l…(length vl)
     ==∗ ⌜0 < n⌝ ∗ ⌜∀ m, is_Some (σ !! (l +ₗ m)) ↔ (0 ≤ m < n)⌝ ∗
-        heap_ctx (free_mem l (Z.to_nat n) σ).
+        heap_ctx (free_mem l (Z.to_nat n) σ) ∗ ♢ (length vl).
   Proof.
-    iDestruct 1 as (hF) "(Hvalσ & HhF & REL)"; iDestruct "REL" as %REL.
+    iDestruct 1 as (hF) "(Hvalσ & HhF & REL & %m & Hm & %Hok)"; iDestruct "REL" as %REL.
     rewrite heap_freeable_unseal /heap_freeable_def.
     iIntros "Hmt [Hf %Hn]".
     iCombine "HhF Hf" gives % [Hl Hv]%auth_both_valid_discrete.
@@ -518,13 +638,21 @@ Section heap.
     assert (vl ≠ []).
     { intros ->. by destruct (REL (l.1) (1%Qp, ∅)) as [[] ?]. }
     assert (0 < n) by (subst n; by destruct vl).
+    have Hdom : ∀ m, is_Some (σ !! (l +ₗ m)) ↔ (0 ≤ m < n).
+    { intros m0. subst n. by eapply heap_freeable_is_Some. }
     iMod (heap_free_vs with "[Hmt Hvalσ]") as "Hvalσ".
     { rewrite array_combine //. iFrame. }
     iMod (own_update_2 with "HhF Hf") as "HhF".
     { apply auth_update_dealloc, (delete_singleton_local_update _ _ _). }
-    iModIntro; subst. repeat iSplit;  eauto using heap_freeable_is_Some.
-    iExists _. subst. rewrite Nat2Z.id. iFrame.
-    eauto using heap_freeable_rel_free_mem.
+    rewrite space_cred_unseal.
+    iMod (own_update _ _ (● (m + length vl)%nat ⋅ ◯ (length vl)) with "Hm") as "[Hm $]".
+    { apply auth_update_alloc, nat_local_update. rewrite ?right_id. lia. }
+    iModIntro; subst. repeat iSplit; [done|done|].
+    iExists _. subst. rewrite Nat2Z.id. iFrame. iSplit.
+    - eauto using heap_freeable_rel_free_mem.
+    - iPureIntro. intros Hsp. specialize (Hok Hsp).
+      rewrite -(size_free_mem σ l (length vl)) in Hok; first lia.
+      intros m' ?. apply Hdom. lia.
   Qed.
 
   Lemma pointsto_lookup σ l q v :
@@ -546,14 +674,14 @@ Section heap.
   Lemma heap_read σ l q v :
     heap_ctx σ -∗ l ↦{q} v -∗ ⌜σ !! l = Some v⌝.
   Proof.
-    iDestruct 1 as (hF) "(Hσ & HhF & REL)". iIntros "Hmt".
+    iDestruct 1 as (hF) "(Hσ & HhF & REL & Hsp)". iIntros "Hmt".
     iDestruct (pointsto_lookup with "Hσ Hmt") as %Hσl. done.
   Qed.
 
   Lemma heap_read_1 σ l v :
     heap_ctx σ -∗ l ↦ v -∗ ⌜σ !! l = Some v⌝.
   Proof.
-    iDestruct 1 as (hF) "(Hσ & HhF & REL)". iIntros "Hmt".
+    iDestruct 1 as (hF) "(Hσ & HhF & REL & Hsp)". iIntros "Hmt".
     iDestruct (pointsto_lookup_1 with "Hσ Hmt") as %Hσl. done.
   Qed.
 
@@ -573,16 +701,18 @@ Section heap.
   Lemma heap_write σ l v v' :
     heap_ctx σ -∗ l ↦ v ==∗ heap_ctx (<[l:=v']> σ) ∗ l ↦ v'.
   Proof.
-    iDestruct 1 as (hF) "(Hσ & HhF & %)". iIntros "Hmt".
+    iDestruct 1 as (hF) "(Hσ & HhF & % & (%m & Hsp & %Hok))". iIntros "Hmt".
     iDestruct (pointsto_lookup_1 with "Hσ Hmt") as %?; auto.
     iMod (heap_write_vs with "Hσ Hmt") as "[Hσ $]"; first done.
-    iModIntro. iExists _. iFrame. eauto using heap_freeable_rel_stable.
+    iModIntro. iExists _. iFrame. iSplit; first eauto using heap_freeable_rel_stable.
+    iPureIntro. intros Hsp. specialize (Hok Hsp).
+    rewrite map_size_insert_Some; eauto.
   Qed.
 End heap.
 
 #[export] Typeclasses Opaque array.
 
-Global Program Instance heapGS_irisGS `{!heapGS_gen hlc Σ} : irisGS_gen hlc heap_lang Σ := {
+Global Program Instance heapGS_irisGS `{!heapGS_gen hlc hsp Σ} : irisGS_gen hlc heap_lang Σ := {
   iris_invGS := heapGS_invGS;
   state_interp σ step_cnt κs _ :=
     (heap_ctx σ.(heap) ∗ proph_map_interp κs σ.(used_proph_id) ∗ steps_auth step_cnt)%I;
@@ -590,7 +720,7 @@ Global Program Instance heapGS_irisGS `{!heapGS_gen hlc Σ} : irisGS_gen hlc hea
   num_laters_per_step n := n;
 }.
 Next Obligation.
-  iIntros (??? σ ns κs nt) "/= ($ & $ & H)".
+  iIntros (???? σ ns κs nt) "/= ($ & $ & H)".
   by iMod (steps_auth_update_S with "H") as "$".
 Qed.
 
@@ -602,7 +732,7 @@ Definition to_inv_heap (h: gmap loc (val * (val -d> PropO))) : inv_heap_mapUR :=
   prod_map (λ x, Excl' x) to_agree <$> h.
 
 Section inv_heap_definitions.
-  Context `{gG: !heapGS_gen hlc Σ}.
+  Context `{gG: !heapGS_gen hlc hsp Σ}.
 
   Definition inv_heap_inv_P : iProp Σ :=
     ∃ h : gmap loc (val * (val -d> PropO)),
@@ -659,7 +789,7 @@ Section to_inv_heap.
 End to_inv_heap.
 
 Section inv_heap.
-  Context `{!heapGS_gen hlc Σ}.
+  Context `{!heapGS_gen hlc hsp Σ}.
   Implicit Types (l : loc) (v : val) (I : val → Prop).
   Implicit Types (h : gmap loc (val * (val -d> PropO))).
 
@@ -819,7 +949,7 @@ End inv_heap.
 #[export] Typeclasses Opaque inv_heap_inv inv_pointsto inv_pointsto_own.
 
 Section lifting.
-Context `{!heapGS_gen hlc Σ}.
+Context `{!heapGS_gen hlc hsp Σ}.
 Implicit Types P Q : iProp Σ.
 Implicit Types Φ Ψ : val → iProp Σ.
 Implicit Types efs : list expr.
@@ -955,40 +1085,65 @@ Qed.
 
 (** Useful rules for heap freeable predicates *)
 
-Lemma twp_allocN s E v n :
+Lemma twp_allocN_cred s E v n :
   (0 < n)%Z →
-  [[{ True }]] AllocN (Val $ LitV $ LitInt $ FinInt $ n) (Val v) @ s; E
+  [[{ ♢ (Z.to_nat n) }]] AllocN (Val $ LitV $ LitInt $ FinInt $ n) (Val v) @ s; E
   [[{ (l : blk), RET LitV (LitLoc l); †l…(Z.to_nat n) ∗ l ↦∗ replicate (Z.to_nat n) v }]].
 Proof.
-  iIntros (Hn Φ) "_ HΦ". iApply twp_lift_atomic_base_step_no_fork; first done.
+  iIntros (Hn Φ) "Hc HΦ". iApply twp_lift_atomic_base_step_no_fork; first done.
   iIntros (σ1 ns κs nt) "(Hσ & Hκs & Hsteps)". iModIntro.
   iSplit; first by destruct n; auto with lia base_step.
   iIntros (κ v2 σ2 efs Hstep); inv_base_step.
-  iMod (heap_alloc with "Hσ") as "[Hσ Hl]"; [try done..|].
+  iMod (heap_alloc with "Hσ Hc") as "[Hσ Hl]"; [try done..|].
   iMod (steps_auth_update_S with "Hsteps") as "Hsteps".
   iModIntro. do 2 (iSplit; first done). iFrame "∗#%". iApply ("HΦ" with "Hl").
 Qed.
 
-Lemma wp_allocN s E v n :
+Lemma wp_allocN_cred s E v n :
   (0 < n)%Z →
-  {{{ True }}} AllocN (Val $ LitV $ LitInt $ FinInt $ n) (Val v) @ s; E
+  {{{ ♢ (Z.to_nat n) }}} AllocN (Val $ LitV $ LitInt $ FinInt $ n) (Val v) @ s; E
   {{{ (l : blk), RET LitV (LitLoc l); †l…(Z.to_nat n) ∗ l ↦∗ replicate (Z.to_nat n) v }}}.
 Proof.
-  iIntros (Hn Φ) "_ HΦ". iApply (twp_wp_step with "HΦ").
-  iApply twp_allocN; [by auto..|]; iIntros (l) "H HΦ". by iApply "HΦ".
+  iIntros (Hn Φ) "Hc HΦ". iApply (twp_wp_step with "HΦ").
+  iApply (twp_allocN_cred with "Hc"); [by auto..|]; iIntros (l) "H HΦ". by iApply "HΦ".
 Qed.
 
-Lemma twp_alloc s E v :
-  [[{ True }]] Alloc (Val v) @ s; E [[{ (l : blk), RET LitV (LitLoc l); l ↦ v ∗ †l…1}]].
+Lemma twp_alloc_cred s E v :
+  [[{ ♢ 1 }]] Alloc (Val v) @ s; E [[{ (l : blk), RET LitV (LitLoc l); l ↦ v ∗ †l…1}]].
 Proof.
-  iIntros (Φ) "_ HΦ". iApply twp_allocN; [auto with lia..|].
+  iIntros (Φ) "Hc HΦ". iApply (twp_allocN_cred _ _ _ 1 with "Hc"); [auto with lia..|].
   iIntros (l) "/= [†l ?]". rewrite array_singleton. iApply "HΦ"; iFrame.
 Qed.
-Lemma wp_alloc s E v :
-  {{{ True }}} Alloc (Val v) @ s; E {{{ (l : blk), RET LitV (LitLoc l); l ↦ v ∗ †l…1 }}}.
+Lemma wp_alloc_cred s E v :
+  {{{ ♢ 1 }}} Alloc (Val v) @ s; E {{{ (l : blk), RET LitV (LitLoc l); l ↦ v ∗ †l…1 }}}.
 Proof.
-  iIntros (Φ) "_ HΦ". iApply (twp_wp_step with "HΦ").
-  iApply twp_alloc; [by auto..|]; iIntros (l) "H HΦ". by iApply "HΦ".
+  iIntros (Φ) "Hc HΦ". iApply (twp_wp_step with "HΦ").
+  iApply (twp_alloc_cred with "Hc"); [by auto..|]; iIntros (l) "H HΦ". by iApply "HΦ".
+Qed.
+
+Lemma twp_free_cred s E (n:Z) l vl :
+  n = length vl →
+  [[{ l ↦∗ vl ∗ †l…(length vl) }]]
+    Free (Val $ LitV $ LitInt $ FinInt n) (Val $ LitV $ LitLoc l) @ s; E
+  [[{ RET LitV LitUnit; ♢ (length vl) }]].
+Proof.
+  iIntros (? Φ) "[Hl †l] HΦ". iApply twp_lift_atomic_base_step_no_fork; first done.
+  iIntros (σ1 ns κs nt) "(Hσ & Hκs & Hsteps)".
+  iMod (heap_free _ _ _ n with "Hσ Hl †l") as "(% & % & Hσ & Hc)"=>//.
+  iModIntro. iSplit; first by eauto with base_step.
+  iIntros (κ v2 σ2 efs Hstep); inv_base_step.
+  iMod (steps_auth_update_S with "Hsteps") as "Hsteps".
+  iModIntro. do 2 (iSplit; first done).
+  iFrame "∗#%". by iApply "HΦ".
+Qed.
+Lemma wp_free_cred s E (n:Z) l vl :
+  n = length vl →
+  {{{ ▷ (l ↦∗ vl ∗ †l…(length vl)) }}}
+    Free (Val $ LitV $ LitInt $ FinInt n) (Val $ LitV (LitLoc l)) @ s; E
+  {{{ RET LitV LitUnit; ♢ (length vl) }}}.
+Proof.
+  iIntros (? Φ) ">H HΦ". iApply (twp_wp_step with "HΦ").
+  iApply (twp_free_cred with "H"); [by auto..|]; iIntros "H HΦ". by iApply "HΦ".
 Qed.
 
 Lemma twp_free s E (n:Z) l vl :
@@ -997,14 +1152,8 @@ Lemma twp_free s E (n:Z) l vl :
     Free (Val $ LitV $ LitInt $ FinInt n) (Val $ LitV $ LitLoc l) @ s; E
   [[{ RET LitV LitUnit; True }]].
 Proof.
-  iIntros (? Φ) "[Hl †l] HΦ". iApply twp_lift_atomic_base_step_no_fork; first done.
-  iIntros (σ1 ns κs nt) "(Hσ & Hκs & Hsteps)".
-  iMod (heap_free _ _ _ n with "Hσ Hl †l") as "(% & % & Hσ)"=>//.
-  iModIntro. iSplit; first by eauto with base_step.
-  iIntros (κ v2 σ2 efs Hstep); inv_base_step.
-  iMod (steps_auth_update_S with "Hsteps") as "Hsteps".
-  iModIntro. do 2 (iSplit; first done).
-  iFrame "∗#%". by iApply "HΦ".
+  iIntros (? Φ) "H HΦ". iApply (twp_free_cred with "H"); [done|].
+  iIntros "_". by iApply "HΦ".
 Qed.
 Lemma wp_free s E (n:Z) l vl :
   n = length vl →
@@ -1012,8 +1161,8 @@ Lemma wp_free s E (n:Z) l vl :
     Free (Val $ LitV $ LitInt $ FinInt n) (Val $ LitV (LitLoc l)) @ s; E
   {{{ RET LitV LitUnit; True }}}.
 Proof.
-  iIntros (? Φ) ">H HΦ". iApply (twp_wp_step with "HΦ").
-  iApply (twp_free with "H"); [by auto..|]; iIntros "H HΦ". by iApply "HΦ".
+  iIntros (? Φ) "H HΦ". iApply (wp_free_cred with "H"); [done|].
+  iIntros "!> _". by iApply "HΦ".
 Qed.
 
 Lemma twp_load s E l dq v :
@@ -1242,3 +1391,46 @@ Proof.
 Qed.
 
 End lifting.
+
+(** Allocation without space credits, when the heap is unbounded. *)
+Section lifting_nospace.
+Context `{!heapGS_gen hlc NoSpace Σ}.
+
+Lemma twp_allocN s E v n :
+  (0 < n)%Z →
+  [[{ True }]] AllocN (Val $ LitV $ LitInt $ FinInt $ n) (Val v) @ s; E
+  [[{ (l : blk), RET LitV (LitLoc l); †l…(Z.to_nat n) ∗ l ↦∗ replicate (Z.to_nat n) v }]].
+Proof.
+  iIntros (Hn Φ) "_ HΦ". iApply twp_lift_atomic_base_step_no_fork; first done.
+  iIntros (σ1 ns κs nt) "(Hσ & Hκs & Hsteps)".
+  iMod (heap_ctx_mint _ (Z.to_nat n) with "Hσ") as "[Hσ Hc]"; first done.
+  iModIntro. iSplit; first by destruct n; auto with lia base_step.
+  iIntros (κ v2 σ2 efs Hstep); inv_base_step.
+  iMod (heap_alloc with "Hσ Hc") as "[Hσ Hl]"; [try done..|].
+  iMod (steps_auth_update_S with "Hsteps") as "Hsteps".
+  iModIntro. do 2 (iSplit; first done). iFrame "∗#%". iApply ("HΦ" with "Hl").
+Qed.
+
+Lemma wp_allocN s E v n :
+  (0 < n)%Z →
+  {{{ True }}} AllocN (Val $ LitV $ LitInt $ FinInt $ n) (Val v) @ s; E
+  {{{ (l : blk), RET LitV (LitLoc l); †l…(Z.to_nat n) ∗ l ↦∗ replicate (Z.to_nat n) v }}}.
+Proof.
+  iIntros (Hn Φ) "_ HΦ". iApply (twp_wp_step with "HΦ").
+  iApply twp_allocN; [by auto..|]; iIntros (l) "H HΦ". by iApply "HΦ".
+Qed.
+
+Lemma twp_alloc s E v :
+  [[{ True }]] Alloc (Val v) @ s; E [[{ (l : blk), RET LitV (LitLoc l); l ↦ v ∗ †l…1}]].
+Proof.
+  iIntros (Φ) "_ HΦ". iApply twp_allocN; [auto with lia..|].
+  iIntros (l) "/= [†l ?]". rewrite array_singleton. iApply "HΦ"; iFrame.
+Qed.
+Lemma wp_alloc s E v :
+  {{{ True }}} Alloc (Val v) @ s; E {{{ (l : blk), RET LitV (LitLoc l); l ↦ v ∗ †l…1 }}}.
+Proof.
+  iIntros (Φ) "_ HΦ". iApply (twp_wp_step with "HΦ").
+  iApply twp_alloc; [by auto..|]; iIntros (l) "H HΦ". by iApply "HΦ".
+Qed.
+
+End lifting_nospace.

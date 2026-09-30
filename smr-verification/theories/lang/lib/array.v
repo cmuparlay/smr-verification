@@ -25,7 +25,7 @@ Definition array_clone : val :=
 (** ** Specifications *)
 
 Section array.
-  Context `{!heapGS Σ}.
+  Context `{!heapGS_gen HasLc hsp Σ}.
   (* Implicit Types (l : loc) (n : nat) (v : val) (vs : list val). *)
 
   Lemma wp_array_copy_to stk E (ld ls : loc) vdst vsrc q n :
@@ -62,6 +62,31 @@ Section array.
       iApply ("HΦ" with "[$]").
   Qed.
 
+  Lemma wp_array_clone_cred stk E l q vs n :
+    length vs = n → 0 < length vs →
+    {{{ l ↦∗{q} vs ∗ ♢ n }}}
+      array_clone #l #n @ stk; E
+    {{{ (l' : blk) , RET #l'; l ↦∗{q} vs ∗ l' ↦∗ vs ∗ †l'…n }}}.
+  Proof.
+    iIntros (Hlen Hpos Φ) "[Hl Hc] HΦ".
+    wp_lam. wp_pures.
+    wp_apply (wp_allocN_cred with "[Hc]") as (l') "[†l' Hl']"; first lia.
+    { by rewrite Nat2Z.id. }
+    wp_pures.
+    (* rewrite Nat2Z.id -{4}(length_replicate (length vs) #()) //. *)
+    wp_apply (wp_array_copy_to _ _ _ _ (replicate (Z.to_nat n) #()) vs with "[$]").
+    { rewrite length_replicate. lia. }
+    { done. }
+    iIntros "[Hl' Hl]".
+    wp_pures.
+    rewrite Nat2Z.id.
+    iApply ("HΦ" with "[$]").
+  Qed.
+End array.
+
+Section array_nospace.
+  Context `{!heapGS Σ}.
+
   Lemma wp_array_clone stk E l q vs n :
     length vs = n → 0 < length vs →
     {{{ l ↦∗{q} vs }}}
@@ -81,4 +106,4 @@ Section array.
     rewrite Nat2Z.id.
     iApply ("HΦ" with "[$]").
   Qed.
-End array.
+End array_nospace.

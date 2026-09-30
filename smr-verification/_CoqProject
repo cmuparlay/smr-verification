@@ -114,9 +114,12 @@ theories/hazptr/code_llsc_thread.v
 theories/hazptr/code_cached_me.v
 theories/hazptr/code_cached_wf_llsc.v
 theories/hazptr/code_writable_big_atomic.v
+theories/hazptr/code_hazptr_sp.v
+theories/hazptr/code_cached_wf_llsc_sp.v
 
 ## Specs
 theories/hazptr/spec_hazptr.v
+theories/hazptr/spec_hazptr_sp.v
 theories/hazptr/spec_counter.v
 theories/hazptr/spec_hybrid_counter.v
 theories/hazptr/spec_stack.v
@@ -127,6 +130,7 @@ theories/hazptr/spec_ordered_set.v
 theories/hazptr/spec_big_atomic.v
 theories/hazptr/spec_big_atomic_llsc.v
 theories/hazptr/spec_writable_big_atomic.v
+theories/hazptr/spec_big_atomic_llsc_sp.v
 
 ## Proofs
 theories/hazptr/proof_hazptr.v
@@ -145,6 +149,9 @@ theories/hazptr/proof_cached_wf.v
 theories/hazptr/proof_cached_me.v
 theories/hazptr/proof_cached_wf_llsc.v
 theories/hazptr/proof_writable_big_atomic.v
+theories/hazptr/proof_hazptr_sp.v
+theories/hazptr/proof_cached_wf_llsc_sp.v
+theories/hazptr/client_space.v
 
 theories/hazptr/closed_proofs.v
 theories/hazptr/client.v

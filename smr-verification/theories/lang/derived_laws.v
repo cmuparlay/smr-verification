@@ -10,7 +10,7 @@ From iris.prelude Require Import options.
 
 (* extra array rules that don't have counterpart in lambda-rust *)
 Section lifting.
-Context `{!heapGS_gen hlc Σ}.
+Context `{!heapGS_gen hlc hsp Σ}.
 Implicit Types P Q : iProp Σ.
 Implicit Types Φ : val → iProp Σ.
 Implicit Types σ : state.

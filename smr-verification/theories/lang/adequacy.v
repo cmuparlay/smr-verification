@@ -1,4 +1,4 @@
-From iris.algebra Require Import auth gmap.
+From iris.algebra Require Import auth gmap numbers.
 From iris.base_logic.lib Require Import mono_nat ghost_map invariants mono_nat.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Export weakestpre adequacy.
@@ -12,12 +12,14 @@ Class heapGpreS Σ := HeapGpreS {
   #[global] heapGS_freeable :: inG Σ (authR heap_freeableUR);
   #[global] heapGpreS_proph :: proph_mapGpreS proph_id (val * val) Σ;
   #[global] heapGS_step_cnt :: mono_natG Σ;
+  heapGpreS_space : inG Σ (authR natUR);
 }.
+Local Existing Instance heapGpreS_space.
 
 Definition heapΣ : gFunctors :=
   #[invΣ; ghost_mapΣ loc val; GFunctor (constRF (authR inv_heap_mapUR));
     GFunctor (constRF (authR heap_freeableUR));
-    proph_mapΣ proph_id (val * val); mono_natΣ].
+    proph_mapΣ proph_id (val * val); mono_natΣ; GFunctor (authR natUR)].
 Global Instance subG_heapGpreS {Σ} : subG heapΣ Σ → heapGpreS Σ.
 Proof. solve_inG. Qed.
 
@@ -41,7 +43,8 @@ Proof.
     first by apply auth_auth_valid.
   iMod (proph_map_init κs σ.(used_proph_id)) as (?) "[Hp _]".
   iMod (mono_nat_own_alloc) as (nγ) "[Hsteps _]".
-  set (Hheap := HeapGS _ _ _ vγ _ iγ _ fγ _ _ nγ _).
+  iMod (own_alloc (● (0 : natUR))) as (sγ) "Hsγ"; first by apply auth_auth_valid.
+  set (Hheap := @HeapGS HasLc NoSpace Σ _ vγ _ iγ _ fγ _ _ nγ _ sγ _ 0).
   iAssert (inv_heap_inv_P (gG:=Hheap)) with "[H●]" as "P".
   { iExists _. iFrame. done. }
   iMod (inv_alloc inv_heapN ⊤ inv_heap_inv_P with "P") as "Hi".
@@ -51,10 +54,68 @@ Proof.
                           proph_map_interp κs σ.(used_proph_id) ∗
                           mono_nat_auth_own_frac nγ 1 ns))%I.
   iExists [(λ v, ⌜φ v⌝%I)], (λ _, True)%I, _ => /=.
-  iFrame. iSplitR; [done|].
+  iFrame. iSplitR; [iSplit; iPureIntro; [done|by intros ?]|].
   iIntros (es' t2' -> ? ?) " _ H _".
   iApply fupd_mask_intro_discard; [done|]. iSplit; [|done].
   iDestruct (big_sepL2_cons_inv_r with "H") as (e' ? ->) "[Hwp H]".
   iDestruct (big_sepL2_nil_inv_r with "H") as %->.
   iIntros (v2 t2'' [= -> <-]). by rewrite to_of_val.
+Qed.
+
+(** Adequacy with a space bound: if [e] is verified with the [S - size σ]
+    space credits that the budget [S] leaves after the initial heap, then it is
+    safe, and every reachable heap has at most [S] cells. *)
+Lemma heap_space_adequacy_strong Σ `{!heapGpreS Σ} s e σ φ (S : nat) :
+  size σ.(heap) ≤ S →
+  (∀ `{!heapGS_gen HasLc HasSpace Σ},
+     ⊢ inv_heap_inv -∗ ♢ (S - size σ.(heap)) -∗ WP e @ s; ⊤ {{ v, ⌜φ v⌝ }}) →
+  ∀ n κs t2 σ2, language.nsteps n ([e], σ) κs (t2, σ2) →
+  (∀ v2 t2', t2 = of_val v2 :: t2' → φ v2) ∧
+  (∀ e2, s = NotStuck → e2 ∈ t2 → not_stuck e2 σ2) ∧
+  size σ2.(heap) ≤ S.
+Proof.
+  intros Hsize Hwp n κs t2 σ2 Hsteps.
+  eapply (wp_strong_adequacy Σ _); [|done].
+  iIntros (Hinv).
+  iMod (ghost_map_alloc σ.(heap)) as (vγ) "[Hvγ ?]".
+  iMod (own_alloc (● (to_inv_heap ∅))) as (iγ) "H●".
+  { rewrite auth_auth_valid. exact: to_inv_heap_valid. }
+  iMod (own_alloc (● (∅ : heap_freeableUR))) as (fγ) "Hfγ";
+    first by apply auth_auth_valid.
+  iMod (proph_map_init κs σ.(used_proph_id)) as (?) "[Hp _]".
+  iMod (mono_nat_own_alloc) as (nγ) "[Hsteps _]".
+  iMod (own_alloc (● (S - size σ.(heap) : natUR) ⋅ ◯ (S - size σ.(heap) : natUR)))
+    as (sγ) "[Hsγ Hc]"; first by apply auth_both_valid_discrete.
+  set (Hheap := @HeapGS HasLc HasSpace Σ _ vγ _ iγ _ fγ _ _ nγ _ sγ _ S).
+  iAssert (inv_heap_inv_P (gG:=Hheap)) with "[H●]" as "P".
+  { iExists _. iFrame. done. }
+  iMod (inv_alloc inv_heapN ⊤ inv_heap_inv_P with "P") as "Hi".
+  iDestruct (Hwp Hheap with "Hi [Hc]") as "Hwp".
+  { by rewrite space_cred_unseal. }
+  iModIntro.
+  iExists (λ σ ns κs nt, (heap_ctx σ.(heap) ∗
+                          proph_map_interp κs σ.(used_proph_id) ∗
+                          mono_nat_auth_own_frac nγ 1 ns))%I.
+  iExists [(λ v, ⌜φ v⌝%I)], (λ _, True)%I, _ => /=.
+  iFrame. iSplitR; [iSplit; iPureIntro; [done|intros _; simpl; lia]|].
+  iIntros (es' t2' -> ? ?) "(Hσ & _) H _".
+  iDestruct (heap_ctx_size with "Hσ") as %Hsz; first done.
+  iApply fupd_mask_intro_discard; [done|]. simpl in Hsz. iSplit; [|iPureIntro; split; [done|lia]].
+  iDestruct (big_sepL2_cons_inv_r with "H") as (e' ? ->) "[Hwp H]".
+  iDestruct (big_sepL2_nil_inv_r with "H") as %->.
+  iIntros (v2 t2'' [= -> <-]). by rewrite to_of_val.
+Qed.
+
+Definition heap_space_adequacy Σ `{!heapGpreS Σ} s e σ φ (S : nat) :
+  size σ.(heap) ≤ S →
+  (∀ `{!heapGS_gen HasLc HasSpace Σ},
+     ⊢ inv_heap_inv -∗ ♢ (S - size σ.(heap)) -∗ WP e @ s; ⊤ {{ v, ⌜φ v⌝ }}) →
+  adequate s e σ (λ v _, φ v) ∧
+  ∀ t2 σ2, rtc erased_step ([e], σ) (t2, σ2) → size σ2.(heap) ≤ S.
+Proof.
+  intros Hsize Hwp. split.
+  - apply adequate_alt; intros t2 σ2 [n [κs ?]]%erased_steps_nsteps.
+    by edestruct (heap_space_adequacy_strong Σ s e σ φ S) as (? & ? & _).
+  - intros t2 σ2 [n [κs ?]]%erased_steps_nsteps.
+    by edestruct (heap_space_adequacy_strong Σ s e σ φ S) as (_ & _ & ?).
 Qed.
